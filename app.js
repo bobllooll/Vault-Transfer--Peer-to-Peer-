@@ -118,8 +118,9 @@ async function init() {
     });
 
     // --- P2P EVENTS ---
-    p2p.on('onConnect', () => {
-        statusEl.innerText = 'SECURE LINK ESTABLISHED';
+    p2p.on('onConnect', (peerCount) => {
+        const total = (peerCount || 0) + 1;
+        statusEl.innerText = `CONNECTED (${total} USERS)`;
         statusEl.style.color = '#00e5ff';
         dropLabel.innerText = 'DROP FILE TO INITIATE TRANSFER';
         visuals.state.connected = true;
@@ -130,14 +131,22 @@ async function init() {
         disconnectModal.style.display = 'none'; // Hide modal on reconnect
     });
 
-    p2p.on('onDisconnect', () => {
-        statusEl.innerText = 'PEER DISCONNECTED';
-        statusEl.style.color = 'red';
-        visuals.state.connected = false;
-        disconnectModal.style.display = 'flex';
+    p2p.on('onDisconnect', (peerCount) => {
+        const total = (peerCount || 0) + 1;
         
-        // Update Modal Text for Guest
-        if (!p2p.isHost) {
+        if (p2p.isHost) {
+            // Host Logic: Update counter, don't show modal if just one peer left but others remain
+            statusEl.innerText = peerCount > 0 ? `CONNECTED (${total} USERS)` : 'WAITING FOR PEER (1 USER)';
+            statusEl.style.color = peerCount > 0 ? '#00e5ff' : '#ffaa00';
+            visuals.state.connected = peerCount > 0;
+            disconnectModal.style.display = 'none';
+        } else {
+            // Guest Logic: Connection lost to host
+            statusEl.innerText = 'DISCONNECTED (1 USER)';
+            statusEl.style.color = 'red';
+            visuals.state.connected = false;
+            disconnectModal.style.display = 'flex';
+            
             const modalTitle = document.querySelector('#disconnect-modal h2');
             const modalText = document.querySelector('#disconnect-modal p');
             modalTitle.innerText = 'CONNECTION LOST';
@@ -169,13 +178,22 @@ async function init() {
 }
 
 async function initializeHost() {
-    const { roomId: id, keyString } = await p2p.initHost();
+    // Ask for limit
+    let limit = prompt("Max Users (including you)?", "5");
+    let maxPeers = 4;
+    if (limit && !isNaN(limit)) {
+        maxPeers = parseInt(limit) - 1;
+        if (maxPeers < 1) maxPeers = 1;
+    }
+
+    statusEl.innerText = 'INITIALIZING...';
+    const { roomId: id, keyString } = await p2p.initHost(maxPeers);
     roomId = id;
     
     const fullLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}#${keyString}`;
     linkInput.value = fullLink;
     
-    statusEl.innerText = 'WAITING FOR PEER';
+    statusEl.innerText = 'WAITING FOR PEER (1 USER)';
     statusEl.style.color = '#ffaa00';
     updateQRCode(fullLink);
 }
@@ -185,7 +203,7 @@ async function initializeGuest(id) {
     if (hash) {
         await p2p.initGuest(id, hash);
     } else {
-        alert('Fehler: Kein Sicherheitsschlüssel in der URL gefunden!');
+        showToast('ERROR: MISSING SECURITY KEY IN URL');
         return;
     }
     linkInput.value = window.location.href;
@@ -256,7 +274,7 @@ async function createNewRoom() {
     p2p = new VaultP2P(); // Reset instance
     // Re-bind events for new instance
     p2p.on('onConnect', () => {
-        statusEl.innerText = 'SECURE LINK ESTABLISHED';
+        statusEl.innerText = 'CONNECTED (2 USERS)';
         statusEl.style.color = '#00e5ff';
         dropLabel.innerText = 'DROP FILE TO INITIATE TRANSFER';
         visuals.state.connected = true;
@@ -278,10 +296,6 @@ function handleFileReceived(blob, name) {
     addToHistory(name, blob);
     receivedFilesCache.push({ fileName: name, blob: blob });
     
-    if (name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        showPreview(blob);
-    }
-    
     visuals.state.transferring = false;
     resetUI();
 }
@@ -297,19 +311,29 @@ async function sendFile(file) {
     resetUI();
 }
 
+function showToast(message, duration = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerText = message;
+    
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 // --- UI HELPERS ---
 function showTransferUI(name) {
     transferPanel.style.display = 'block';
     document.getElementById('file-name').innerText = name;
+    document.getElementById('current-transfer-info').style.display = 'flex';
+    document.querySelector('.energy-bar-container').style.display = 'block';
     dropLabel.style.opacity = 0;
-}
-
-function showPreview(blob) {
-    const url = URL.createObjectURL(blob);
-    const img = document.createElement('img');
-    img.src = url;
-    document.getElementById('preview-container').innerHTML = '';
-    document.getElementById('preview-container').appendChild(img);
 }
 
 function addToHistory(fileName, blob) {
@@ -332,16 +356,6 @@ function addToHistory(fileName, blob) {
     actions.appendChild(downloadBtn);
     
     item.appendChild(nameSpan);
-    
-    if (fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        const url = URL.createObjectURL(blob);
-        const img = document.createElement('img');
-        img.src = url;
-        img.style.maxWidth = '100%';
-        img.style.borderRadius = '4px';
-        img.style.border = '1px solid rgba(255,255,255,0.1)';
-        item.appendChild(img);
-    }
     
     item.appendChild(actions);
     
@@ -369,6 +383,9 @@ function resetUI() {
             transferPanel.style.display = 'none';
             downloadAllBtn.style.display = 'none';
             receivedFilesCache = []; // Cache leeren wenn Panel zugeht
+        } else {
+            document.getElementById('current-transfer-info').style.display = 'none';
+            document.querySelector('.energy-bar-container').style.display = 'none';
         }
         dropLabel.style.opacity = 1;
         progressBar.style.width = '0%';
@@ -438,6 +455,7 @@ function setupDragAndDrop() {
     document.getElementById('copy-btn').addEventListener('click', () => {
         linkInput.select();
         document.execCommand('copy');
+        showToast('SECURE LINK COPIED TO CLIPBOARD');
     });
 }
 

@@ -1,7 +1,7 @@
 class VaultP2P {
     constructor() {
         this.peer = null;
-        this.conn = null;
+        this.connections = [];
         this.sharedKey = null;
         this.CHUNK_SIZE = 16 * 1024;
         this.callbacks = {
@@ -21,27 +21,33 @@ class VaultP2P {
         // Reconnect State
         this.isHost = false;
         this.targetRoomId = null;
+        this.maxPeers = Infinity;
     }
 
     on(event, fn) {
         this.callbacks[event] = fn;
     }
 
-    async initHost() {
+    async initHost(maxPeers = Infinity) {
         this.isHost = true;
-        const roomId = uuid.v4().split('-')[0];
+        this.maxPeers = maxPeers;
         this.sharedKey = await this.generateKey();
         const keyString = await this.exportKey(this.sharedKey);
         
-        this.peer = new Peer(roomId);
-        
-        this.peer.on('connection', (c) => this.handleConnection(c));
-        this.peer.on('error', (err) => {
-            console.error('PeerJS Error (Host):', err);
-            this.callbacks.onError(err);
+        return new Promise((resolve, reject) => {
+            // Wir lassen PeerJS die ID generieren (sicherer & keine Kollisionen)
+            this.peer = new Peer();
+            
+            this.peer.on('open', (id) => {
+                this.peer.on('connection', (c) => this.handleConnection(c));
+                resolve({ roomId: id, keyString });
+            });
+
+            this.peer.on('error', (err) => {
+                console.error('PeerJS Error (Host):', err);
+                this.callbacks.onError(err);
+            });
         });
-        
-        return { roomId, keyString };
     }
 
     async initGuest(roomId, keyString) {
@@ -62,15 +68,28 @@ class VaultP2P {
     }
 
     handleConnection(c) {
-        this.conn = c;
-        this.conn.on('open', () => {
-            this.callbacks.onConnect();
+        // Host Limit Check
+        if (this.isHost && this.connections.length >= this.maxPeers) {
+            c.on('open', () => {
+                c.send({ type: 'error', message: 'Room is full.' });
+                setTimeout(() => c.close(), 500);
+            });
+            return;
+        }
+
+        this.connections.push(c);
+
+        c.on('open', () => {
+            this.callbacks.onConnect(this.connections.length);
         });
-        this.conn.on('data', (data) => this.handleData(data));
-        this.conn.on('close', () => {
-            this.conn = null;
-            this.callbacks.onDisconnect();
-            if (!this.isHost && this.targetRoomId) {
+        
+        c.on('data', (data) => this.handleData(data));
+        
+        c.on('close', () => {
+            this.connections = this.connections.filter(conn => conn !== c);
+            this.callbacks.onDisconnect(this.connections.length);
+            
+            if (!this.isHost && this.targetRoomId && this.connections.length === 0) {
                 this.reconnect();
             }
         });
@@ -116,7 +135,7 @@ class VaultP2P {
     reconnect() {
         console.log('Attempting auto-reconnect...');
         setTimeout(() => {
-            if (!this.conn && this.peer && !this.peer.destroyed) {
+            if (this.connections.length === 0 && this.peer && !this.peer.destroyed) {
                 const c = this.peer.connect(this.targetRoomId);
                 this.handleConnection(c);
             }
@@ -125,12 +144,13 @@ class VaultP2P {
 
     sendFile(file) {
         return new Promise(async (resolve, reject) => {
-            if (!this.conn) return resolve();
+            if (this.connections.length === 0) return resolve();
 
             // Send Metadata
             const meta = JSON.stringify({ fileName: file.name, fileSize: file.size });
             const metaEncrypted = await this.encryptData(new TextEncoder().encode(meta));
-            this.conn.send(metaEncrypted);
+            
+            this.connections.forEach(c => { if (c.open) c.send(metaEncrypted); });
 
             // Send Chunks
             const reader = new FileReader();
@@ -138,7 +158,9 @@ class VaultP2P {
 
             reader.onload = async (e) => {
                 const chunkEncrypted = await this.encryptData(e.target.result);
-                this.conn.send(chunkEncrypted);
+                
+                this.connections.forEach(c => { if (c.open) c.send(chunkEncrypted); });
+                
                 offset += e.target.result.byteLength;
                 this.callbacks.onDataProgress(offset, file.size);
 
@@ -159,7 +181,8 @@ class VaultP2P {
     }
 
     destroy() {
-        if (this.conn) this.conn.close();
+        this.connections.forEach(c => c.close());
+        this.connections = [];
         if (this.peer) this.peer.destroy();
     }
 
