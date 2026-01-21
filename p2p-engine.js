@@ -10,6 +10,7 @@ class VaultP2P {
             onDataProgress: () => {},
             onFileReceived: () => {},
             onIncomingInfo: () => {},
+            onPeerCountUpdate: () => {},
             onError: () => {}
         };
         
@@ -23,15 +24,18 @@ class VaultP2P {
         this.targetRoomId = null;
         this.maxPeers = Infinity;
         this.pingInterval = null;
+        this.myDeviceType = 'desktop';
+        this.peers = []; // Liste aller Peers {id, device}
     }
 
     on(event, fn) {
         this.callbacks[event] = fn;
     }
 
-    async initHost(maxPeers = Infinity) {
+    async initHost(maxPeers = Infinity, deviceType = 'desktop') {
         this.isHost = true;
         this.maxPeers = maxPeers;
+        this.myDeviceType = deviceType;
         this.sharedKey = await this.generateKey();
         const keyString = await this.exportKey(this.sharedKey);
         this.startHeartbeat();
@@ -42,6 +46,7 @@ class VaultP2P {
             
             this.peer.on('open', (id) => {
                 this.peer.on('connection', (c) => this.handleConnection(c));
+                this.peers = [{ id: id, device: this.myDeviceType }]; // Host zur Liste hinzufügen
                 resolve({ roomId: id, keyString });
             });
 
@@ -52,8 +57,9 @@ class VaultP2P {
         });
     }
 
-    async initGuest(roomId, keyString) {
+    async initGuest(roomId, keyString, deviceType = 'desktop') {
         this.isHost = false;
+        this.myDeviceType = deviceType;
         this.targetRoomId = roomId;
         this.sharedKey = await this.importKey(keyString);
         this.startHeartbeat();
@@ -83,14 +89,22 @@ class VaultP2P {
         this.connections.push(c);
 
         c.on('open', () => {
+            // Handshake: Sende eigene Infos
+            c.send({ type: 'hello', id: this.peer.id, device: this.myDeviceType });
             this.callbacks.onConnect(this.connections.length);
         });
         
-        c.on('data', (data) => this.handleData(data));
+        c.on('data', (data) => this.handleData(data, c));
         
         c.on('close', () => {
             this.connections = this.connections.filter(conn => conn !== c);
             this.callbacks.onDisconnect(this.connections.length);
+            
+            // Peer sauber aus der Liste entfernen
+            if (c.peerId) {
+                this.peers = this.peers.filter(p => p.id !== c.peerId);
+            }
+            if (this.isHost) this.broadcastPeerList();
             
             if (!this.isHost && this.targetRoomId && this.connections.length === 0) {
                 this.reconnect();
@@ -98,14 +112,44 @@ class VaultP2P {
         });
     }
 
-    async handleData(data) {
+    broadcastPeerList() {
+        const msg = { type: 'peer-update', peers: this.peers };
+        this.connections.forEach(c => {
+            if (c.open) c.send(msg);
+        });
+        this.callbacks.onPeerCountUpdate(this.peers);
+    }
+
+    async handleData(data, sourceConn) {
         // 1. Keep-Alive Heartbeat (Ignorieren)
         if (data === 'PING') return;
 
         // 2. System Nachrichten (Unverschlüsselt, z.B. Fehler)
-        if (data && data.type === 'error') {
-            this.callbacks.onError({ type: 'room-full', message: data.message });
+        if (data && typeof data === 'object' && !(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data) && !(data instanceof Blob)) {
+            if (data.type === 'error') {
+                this.callbacks.onError({ type: 'room-full', message: data.message });
+            } else if (data.type === 'hello') {
+                // Neuer Peer stellt sich vor
+                sourceConn.peerId = data.id; // ID an der Verbindung speichern für Disconnect-Handling
+                const exists = this.peers.find(p => p.id === data.id);
+                if (!exists) {
+                    this.peers.push({ id: data.id, device: data.device });
+                }
+                if (this.isHost) this.broadcastPeerList();
+            } else if (data.type === 'peer-update') {
+                this.peers = Array.isArray(data.peers) ? data.peers : [];
+                this.callbacks.onPeerCountUpdate(this.peers);
+            }
             return;
+        }
+
+        // 3. Host Relay (Daten an alle anderen weiterleiten)
+        if (this.isHost && sourceConn) {
+            this.connections.forEach(conn => {
+                if (conn !== sourceConn && conn.open) {
+                    conn.send(data);
+                }
+            });
         }
 
         try {

@@ -37,6 +37,7 @@ function setupUI() {
 
 // --- INITIALIZATION ---
 async function init() {
+    console.log("--- VAULT TRANSFER v4.5 INIT ---"); // Prüfe in der Konsole, ob dies erscheint
     setupUI();
 
     // Initialize Engines
@@ -120,13 +121,18 @@ async function init() {
         }
     });
 
-    // --- P2P EVENTS ---
-    p2p.on('onConnect', (peerCount) => {
-        const total = (peerCount || 0) + 1;
-        statusEl.innerText = `CONNECTED (${total} USERS)`;
+    setupP2PEvents();
+}
+
+function setupP2PEvents() {
+    // --- P2P EVENTS (Re-usable for new rooms) ---
+    p2p.on('onConnect', () => {
+        statusEl.innerText = `CONNECTED`;
         statusEl.style.color = '#00e5ff';
         dropLabel.innerText = 'DROP FILE TO INITIATE TRANSFER';
         visuals.state.connected = true;
+        // Falls wir Host sind, haben wir schon eine Peer-Liste
+        if (p2p.peers && p2p.peers.length > 0) visuals.updateTopology(p2p.peers);
         if (pendingFile) {
             sendFile(pendingFile);
             pendingFile = null;
@@ -142,12 +148,14 @@ async function init() {
             statusEl.innerText = peerCount > 0 ? `CONNECTED (${total} USERS)` : 'WAITING FOR PEER (1 USER)';
             statusEl.style.color = peerCount > 0 ? '#00e5ff' : '#ffaa00';
             visuals.state.connected = peerCount > 0;
+            visuals.updateTopology(total); // Form aktualisieren
             disconnectModal.style.display = 'none';
         } else {
             // Guest Logic: Connection lost to host
             statusEl.innerText = 'DISCONNECTED (1 USER)';
             statusEl.style.color = 'red';
             visuals.state.connected = false;
+            visuals.updateTopology(1); // Zurück zum Ring
             disconnectModal.style.display = 'flex';
             
             const modalTitle = document.querySelector('#disconnect-modal h2');
@@ -190,6 +198,23 @@ async function init() {
     p2p.on('onIncomingInfo', (info) => handleIncomingInfo(info));
     p2p.on('onDataProgress', (current, total) => updateProgress(current, total));
     p2p.on('onFileReceived', (blob, name) => handleFileReceived(blob, name));
+    
+    p2p.on('onPeerCountUpdate', (data) => {
+        console.log("DEBUG: Peer Update Data received:", data); // Log für dich
+        
+        let displayCount = 1;
+        if (Array.isArray(data)) {
+            displayCount = data.length;
+        } else if (typeof data === 'number') {
+            displayCount = data;
+        }
+        
+        console.log("DEBUG: Display Count calculated:", displayCount);
+        
+        statusEl.innerText = `CONNECTED (${displayCount} USERS)`;
+        visuals.state.connected = true;
+        visuals.updateTopology(data);
+    });
 }
 
 async function initializeHost() {
@@ -199,7 +224,8 @@ async function initializeHost() {
     if (maxPeers < 1) maxPeers = 1;
     
     statusEl.innerText = 'INITIALIZING...';
-    const { roomId: id, keyString } = await p2p.initHost(maxPeers);
+    const deviceType = window.innerWidth <= 768 ? 'mobile' : 'desktop';
+    const { roomId: id, keyString } = await p2p.initHost(maxPeers, deviceType);
     roomId = id;
     
     const fullLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}#${keyString}`;
@@ -239,7 +265,8 @@ function getUserLimit() {
 async function initializeGuest(id) {
     const hash = window.location.hash.substring(1);
     if (hash) {
-        await p2p.initGuest(id, hash);
+        const deviceType = window.innerWidth <= 768 ? 'mobile' : 'desktop';
+        await p2p.initGuest(id, hash, deviceType);
     } else {
         showToast('ERROR: MISSING SECURITY KEY IN URL');
         return;
@@ -310,14 +337,7 @@ async function createNewRoom() {
     // Cleanup Old Connection
     p2p.destroy();
     p2p = new VaultP2P(); // Reset instance
-    // Re-bind events for new instance
-    p2p.on('onConnect', () => {
-        statusEl.innerText = 'CONNECTED (2 USERS)';
-        statusEl.style.color = '#00e5ff';
-        dropLabel.innerText = 'DROP FILE TO INITIATE TRANSFER';
-        visuals.state.connected = true;
-    });
-    // ... (other events would need re-binding or better structure, but for now this works for simple reset)
+    setupP2PEvents(); // Re-bind all events
     
     resetUI();
     // Reload page to ensure clean state (simplest way for now)
