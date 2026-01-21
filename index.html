@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hanneken Transfer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="vault-transfer-icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="vault-transfer-icon.svg">
+    <link rel="manifest" href="manifest.json">
+    <!-- Dependencies -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js"></script>
+</head>
+<body>
+
+    <!-- 3D Background -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay -->
+    <div class="ui-layer">
+        <header>
+            <div class="logo">VAULT <span class="accent">TRANSFER</span></div>
+            <div class="status-readout">
+                <span id="connection-status">DISCONNECTED</span>
+                <span class="blink">_</span>
+            </div>
+        </header>
+
+        <main>
+            <input type="file" id="file-input" multiple style="display: none;">
+            <div class="drop-zone-label" id="drop-label">
+                DRAG FILE OR TAP TO UPLOAD
+            </div>
+            
+            <div class="transfer-info" id="transfer-panel" style="display: none;">
+                <div class="file-meta">
+                    <span class="transfer-title">INCOMING DATA STREAM</span>
+                    <button id="close-panel-btn">×</button>
+                </div>
+                
+                <div id="current-transfer-info">
+                    <span id="file-name">Waiting...</span>
+                    <span id="transfer-speed"></span>
+                </div>
+
+                <div class="energy-bar-container">
+                    <div class="energy-bar" id="progress-bar"></div>
+                </div>
+                <div id="preview-container"></div>
+                <div id="file-history"></div>
+                <button id="download-all-btn" style="display: none;">DOWNLOAD ALL FILES</button>
+            </div>
+        </main>
+
+        <footer>
+            <div class="link-container">
+                <span class="label">SECURE LINK:</span>
+                <input type="text" id="room-link" readonly>
+                <button id="copy-btn">COPY</button>
+                <button id="share-btn">SHARE</button>
+                <button id="qr-btn">QR</button>
+                <button id="new-room-btn">NEW</button>
+                <div id="qr-popup"></div>
+            </div>
+            <div class="privacy-notice">
+                SERVERLESS. P2P. ENCRYPTED.
+            </div>
+        </footer>
+    </div>
+
+    <!-- Disconnect Modal -->
+    <div id="disconnect-modal" style="display: none;">
+        <div class="modal-content">
+            <h2>CONNECTION LOST</h2>
+            <p>PEER HAS LEFT THE EVENT HORIZON.</p>
+            <button id="reconnect-btn">CREATE NEW ROOM</button>
+        </div>
+    </div>
+
+    <!-- GDPR Banner -->
+    <div id="gdpr-banner" style="display: none;">
+        <div class="gdpr-content">
+            <span>Wir nutzen LocalStorage für kryptografische Schlüssel & Funktionalität. Keine Tracker.</span>
+            <button id="gdpr-accept">AKZEPTIEREN</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(() => console.log('Service Worker Registered'));
+        }
+    </script>
+</body>
+</html>
