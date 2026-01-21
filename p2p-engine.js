@@ -22,6 +22,7 @@ class VaultP2P {
         this.isHost = false;
         this.targetRoomId = null;
         this.maxPeers = Infinity;
+        this.pingInterval = null;
     }
 
     on(event, fn) {
@@ -33,6 +34,7 @@ class VaultP2P {
         this.maxPeers = maxPeers;
         this.sharedKey = await this.generateKey();
         const keyString = await this.exportKey(this.sharedKey);
+        this.startHeartbeat();
         
         return new Promise((resolve, reject) => {
             // Wir lassen PeerJS die ID generieren (sicherer & keine Kollisionen)
@@ -54,6 +56,7 @@ class VaultP2P {
         this.isHost = false;
         this.targetRoomId = roomId;
         this.sharedKey = await this.importKey(keyString);
+        this.startHeartbeat();
         this.peer = new Peer();
         
         this.peer.on('open', () => {
@@ -95,9 +98,18 @@ class VaultP2P {
         });
     }
 
-    async handleData(encryptedData) {
+    async handleData(data) {
+        // 1. Keep-Alive Heartbeat (Ignorieren)
+        if (data === 'PING') return;
+
+        // 2. System Nachrichten (Unverschlüsselt, z.B. Fehler)
+        if (data && data.type === 'error') {
+            this.callbacks.onError({ type: 'room-full', message: data.message });
+            return;
+        }
+
         try {
-            const decryptedBuffer = await this.decryptData(encryptedData);
+            const decryptedBuffer = await this.decryptData(data);
             const textDecoder = new TextDecoder();
             
             // Try to parse as metadata first (naive check but fast)
@@ -130,6 +142,15 @@ class VaultP2P {
         } catch (err) {
             console.error("Data handling error:", err);
         }
+    }
+
+    startHeartbeat() {
+        if (this.pingInterval) clearInterval(this.pingInterval);
+        this.pingInterval = setInterval(() => {
+            this.connections.forEach(c => {
+                if (c.open) c.send('PING');
+            });
+        }, 2000); // Alle 2 Sekunden ein Lebenszeichen senden
     }
 
     reconnect() {
@@ -181,6 +202,7 @@ class VaultP2P {
     }
 
     destroy() {
+        if (this.pingInterval) clearInterval(this.pingInterval);
         this.connections.forEach(c => c.close());
         this.connections = [];
         if (this.peer) this.peer.destroy();

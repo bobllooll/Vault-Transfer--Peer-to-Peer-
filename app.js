@@ -176,6 +176,9 @@ async function init() {
         if (err.type === 'peer-unavailable') {
             modalTitle.innerText = 'ROOM NOT FOUND';
             modalText.innerText = 'The Event Horizon has vanished. The host may have disconnected or the ID is invalid.';
+        } else if (err.type === 'room-full') {
+            modalTitle.innerText = 'ACCESS DENIED';
+            modalText.innerText = 'The room has reached maximum capacity. Connection rejected.';
         } else {
             modalTitle.innerText = 'CONNECTION ERROR';
             modalText.innerText = `An anomaly occurred: ${err.type}`;

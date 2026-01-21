@@ -39,7 +39,7 @@ class VaultVisuals {
 
     createParticles() {
         // Mobile Optimization: Fewer particles
-        const particleCount = this.isMobile ? 1000 : 2000;
+        const particleCount = this.isMobile ? 1500 : 2000;
         const pGeo = new THREE.BufferGeometry();
         const pPos = new Float32Array(particleCount * 3);
         const pSizes = new Float32Array(particleCount);
@@ -53,7 +53,7 @@ class VaultVisuals {
             pPos[i*3+1] = (Math.random() - 0.5) * 1;
             pPos[i*3+2] = Math.sin(angle) * radius;
 
-            pSizes[i] = Math.random() * (this.isMobile ? 0.3 : 0.2);
+            pSizes[i] = Math.random() * (this.isMobile ? 0.6 : 0.2);
         }
 
         pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
@@ -62,7 +62,8 @@ class VaultVisuals {
         const pMat = new THREE.ShaderMaterial({
             uniforms: {
                 time: { value: 0 },
-                color: { value: new THREE.Color(this.ACCENT_COLOR) }
+                color: { value: new THREE.Color(this.ACCENT_COLOR) },
+                globalOpacity: { value: 0.0 }
             },
             vertexShader: `
                 uniform float time;
@@ -87,12 +88,13 @@ class VaultVisuals {
             `,
             fragmentShader: `
                 uniform vec3 color;
+                uniform float globalOpacity;
                 varying float vAlpha;
                 void main() {
                     vec2 coord = gl_PointCoord - vec2(0.5);
                     if (length(coord) > 0.5) discard;
                     float strength = 1.0 - (length(coord) * 2.0);
-                    gl_FragColor = vec4(color, vAlpha * strength);
+                    gl_FragColor = vec4(color, vAlpha * strength * globalOpacity);
                 }
             `,
             transparent: true,
@@ -109,12 +111,12 @@ class VaultVisuals {
         const glowMat = new THREE.MeshBasicMaterial({
             color: this.ACCENT_COLOR,
             transparent: true,
-            opacity: 0.05,
+            opacity: 0.0,
             side: THREE.DoubleSide
         });
-        const glow = new THREE.Mesh(glowGeo, glowMat);
-        glow.rotation.x = Math.PI / 2;
-        this.scene.add(glow);
+        this.glow = new THREE.Mesh(glowGeo, glowMat);
+        this.glow.rotation.x = Math.PI / 2;
+        this.scene.add(this.glow);
     }
 
     animate() {
@@ -123,6 +125,16 @@ class VaultVisuals {
         const time = performance.now() * 0.001;
         if (this.particles && this.particles.material.uniforms) {
             this.particles.material.uniforms.time.value = time;
+            
+            // Fade in/out based on connection
+            const targetOpacity = this.state.connected ? 1.0 : 0.0;
+            const currentOpacity = this.particles.material.uniforms.globalOpacity.value;
+            this.particles.material.uniforms.globalOpacity.value = THREE.MathUtils.lerp(currentOpacity, targetOpacity, 0.02);
+        }
+        
+        if (this.glow) {
+            const targetGlow = this.state.connected ? 0.05 : 0.0;
+            this.glow.material.opacity = THREE.MathUtils.lerp(this.glow.material.opacity, targetGlow, 0.02);
         }
 
         // Camera Breathing
