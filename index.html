@@ -74,6 +74,23 @@
         </footer>
     </div>
 
+    <!-- Mobile Start Screen -->
+    <div id="start-screen" style="display: none;">
+        <div class="start-content">
+            <div class="logo-large">VAULT <span class="accent">TRANSFER</span></div>
+            <div class="start-buttons">
+                <button id="start-create-btn">CREATE ROOM</button>
+                <button id="start-scan-btn">SCAN QR CODE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Scanner Overlay -->
+    <div id="qr-scanner-container" style="display: none;">
+        <div id="qr-reader"></div>
+        <button id="close-scanner-btn">CLOSE SCANNER</button>
+    </div>
+
     <!-- Disconnect Modal -->
     <div id="disconnect-modal" style="display: none;">
         <div class="modal-content">
@@ -91,11 +108,15 @@
         </div>
     </div>
 
+    <script src="p2p-engine.js"></script>
+    <script src="visuals.js"></script>
     <script src="app.js"></script>
     <script>
-        if ('serviceWorker' in navigator) {
+        // Nur registrieren, wenn wir auf einem Server laufen (http/https), nicht file://
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
             navigator.serviceWorker.register('sw.js')
-                .then(() => console.log('Service Worker Registered'));
+                .then(() => console.log('Service Worker Registered'))
+                .catch(err => console.log('SW Error:', err));
         }
     </script>
 </body>

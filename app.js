@@ -1,42 +1,45 @@
-// --- CONFIGURATION ---
-const CHUNK_SIZE = 16 * 1024; // 16KB chunks
-const ACCENT_COLOR = 0x00e5ff;
-
 // --- STATE ---
 let roomId;
-let sharedKey; // Der kryptografische Schlüssel
-let peer;
-let conn; // Die aktive Verbindung
-let fileChunks = [];
-let fileInfo = null;
-let receivedSize = 0;
+let p2p; // Instance of VaultP2P
+let visuals; // Instance of VaultVisuals
+
 let pendingFile = null; // Datei, die auf Verbindung wartet
 let receivedFilesCache = []; // Speicher für alle empfangenen Dateien
 
 // --- UI ELEMENTS ---
-const statusEl = document.getElementById('connection-status');
-const linkInput = document.getElementById('room-link');
-const dropLabel = document.getElementById('drop-label');
-const galleryBtn = document.getElementById('gallery-btn');
-const transferPanel = document.getElementById('transfer-panel');
-const progressBar = document.getElementById('progress-bar');
-const speedEl = document.getElementById('transfer-speed');
-const shareBtn = document.getElementById('share-btn');
-const qrBtn = document.getElementById('qr-btn');
-const qrPopup = document.getElementById('qr-popup');
-const newRoomBtn = document.getElementById('new-room-btn');
-const disconnectModal = document.getElementById('disconnect-modal');
-const reconnectBtn = document.getElementById('reconnect-btn');
-const gdprBanner = document.getElementById('gdpr-banner');
-const downloadAllBtn = document.getElementById('download-all-btn');
-const closePanelBtn = document.getElementById('close-panel-btn');
-const startScreen = document.getElementById('start-screen');
-const startCreateBtn = document.getElementById('start-create-btn');
-const startScanBtn = document.getElementById('start-scan-btn');
-const qrScannerContainer = document.getElementById('qr-scanner-container');
+let statusEl, linkInput, dropLabel, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer;
+
+function setupUI() {
+    statusEl = document.getElementById('connection-status');
+    linkInput = document.getElementById('room-link');
+    dropLabel = document.getElementById('drop-label');
+    galleryBtn = document.getElementById('gallery-btn');
+    transferPanel = document.getElementById('transfer-panel');
+    progressBar = document.getElementById('progress-bar');
+    speedEl = document.getElementById('transfer-speed');
+    shareBtn = document.getElementById('share-btn');
+    qrBtn = document.getElementById('qr-btn');
+    qrPopup = document.getElementById('qr-popup');
+    newRoomBtn = document.getElementById('new-room-btn');
+    disconnectModal = document.getElementById('disconnect-modal');
+    reconnectBtn = document.getElementById('reconnect-btn');
+    gdprBanner = document.getElementById('gdpr-banner');
+    downloadAllBtn = document.getElementById('download-all-btn');
+    closePanelBtn = document.getElementById('close-panel-btn');
+    startScreen = document.getElementById('start-screen');
+    startCreateBtn = document.getElementById('start-create-btn');
+    startScanBtn = document.getElementById('start-scan-btn');
+    qrScannerContainer = document.getElementById('qr-scanner-container');
+}
 
 // --- INITIALIZATION ---
 async function init() {
+    setupUI();
+
+    // Initialize Engines
+    p2p = new VaultP2P();
+    visuals = new VaultVisuals('canvas-container');
+
     // 1. Room Logic
     const urlParams = new URLSearchParams(window.location.search);
     roomId = urlParams.get('room');
@@ -49,7 +52,7 @@ async function init() {
     }
 
     // GDPR Check
-    if (!localStorage.getItem('vault-gdpr-consent')) {
+    if (!localStorage.getItem('vault-gdpr-consent') && gdprBanner) {
         gdprBanner.style.display = 'flex';
     }
 
@@ -57,7 +60,7 @@ async function init() {
     const isMobile = window.innerWidth <= 768;
 
     if (!roomId) {
-        if (isMobile) {
+        if (isMobile && startScreen) {
             // Show Start Screen on Mobile
             startScreen.style.display = 'flex';
         } else {
@@ -69,11 +72,12 @@ async function init() {
     }
 
     // 3. Visuals
-    initThreeJS();
+    visuals.init();
     setupDragAndDrop();
     setupGallery();
     setupQRCode();
     setupShareButton();
+    setupFaviconAnimation();
 
     // Event Listeners
     newRoomBtn.addEventListener('click', createNewRoom);
@@ -112,69 +116,68 @@ async function init() {
             html5QrCode.stop().catch(err => console.error(err));
         }
     });
+
+    // --- P2P EVENTS ---
+    p2p.on('onConnect', () => {
+        statusEl.innerText = 'SECURE LINK ESTABLISHED';
+        statusEl.style.color = '#00e5ff';
+        dropLabel.innerText = 'DROP FILE TO INITIATE TRANSFER';
+        visuals.state.connected = true;
+        if (pendingFile) {
+            sendFile(pendingFile);
+            pendingFile = null;
+        }
+    });
+
+    p2p.on('onDisconnect', () => {
+        statusEl.innerText = 'PEER DISCONNECTED';
+        statusEl.style.color = 'red';
+        visuals.state.connected = false;
+        disconnectModal.style.display = 'flex';
+    });
+
+    p2p.on('onIncomingInfo', (info) => handleIncomingInfo(info));
+    p2p.on('onDataProgress', (current, total) => updateProgress(current, total));
+    p2p.on('onFileReceived', (blob, name) => handleFileReceived(blob, name));
 }
 
 async function initializeHost() {
-    // --- HOST MODE (Erstellt den Raum) ---
-    roomId = uuid.v4().split('-')[0]; // Short ID
+    const { roomId: id, keyString } = await p2p.initHost();
+    roomId = id;
     
-    // Generiere Verschlüsselungs-Key
-    sharedKey = await generateKey();
-    const keyString = await exportKey(sharedKey);
-    
-    // URL generieren aber NICHT in die Adressleiste schreiben
     const fullLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}#${keyString}`;
     linkInput.value = fullLink;
-
-    // Peer mit der Room-ID als Kennung erstellen
-    peer = new Peer(roomId);
-
-    peer.on('open', (id) => {
-        statusEl.innerText = 'WAITING FOR PEER';
-        statusEl.style.color = '#ffaa00';
-    });
-
-    // Warten auf Verbindung vom Gast
-    peer.on('connection', (c) => {
-        handleConnection(c);
-    });
+    
+    statusEl.innerText = 'WAITING FOR PEER';
+    statusEl.style.color = '#ffaa00';
+    updateQRCode(fullLink);
 }
 
 async function initializeGuest(id) {
-    // --- GUEST MODE (Tritt bei) ---
-    // Lese Key aus dem URL Hash
     const hash = window.location.hash.substring(1);
     if (hash) {
-        sharedKey = await importKey(hash);
+        await p2p.initGuest(id, hash);
     } else {
         alert('Fehler: Kein Sicherheitsschlüssel in der URL gefunden!');
         return;
     }
     linkInput.value = window.location.href;
-
-    peer = new Peer(); // Zufällige ID für den Gast
-
-    peer.on('open', (myId) => {
-        statusEl.innerText = 'CONNECTING...';
-        // Verbinde zum Host (roomId)
-        const c = peer.connect(id);
-        handleConnection(c);
-    });
-
-    peer.on('error', (err) => {
-        console.error(err);
-        alert('Connection Error: Raum nicht gefunden oder offline.');
-    });
+    statusEl.innerText = 'CONNECTING...';
+    updateQRCode(window.location.href);
 }
 
 function setupQRCode() {
-    new QRCode(qrPopup, {
-        text: linkInput.value,
-        width: 128,
-        height: 128
-    });
     qrBtn.addEventListener('click', () => {
         qrPopup.style.display = qrPopup.style.display === 'block' ? 'none' : 'block';
+    });
+}
+
+function updateQRCode(text) {
+    qrPopup.innerHTML = '';
+    new QRCode(qrPopup, {
+        text: text,
+        width: 128,
+        height: 128
     });
 }
 
@@ -202,7 +205,7 @@ function startQRScanner() {
 
 function setupShareButton() {
     // Prüfen ob der Browser natives Teilen unterstützt (meistens Mobile)
-    if (navigator.share) {
+    if (navigator.share && shareBtn) {
         shareBtn.addEventListener('click', async () => {
             try {
                 await navigator.share({
@@ -214,7 +217,7 @@ function setupShareButton() {
                 console.log('Share canceled or failed', err);
             }
         });
-    } else {
+    } else if (shareBtn) {
         // Button ausblenden auf Desktop-Browsern, die das nicht können
         shareBtn.style.display = 'none';
     }
@@ -222,132 +225,49 @@ function setupShareButton() {
 
 async function createNewRoom() {
     // Cleanup Old Connection
-    if (conn) { conn.close(); conn = null; }
-    if (peer) { peer.destroy(); peer = null; }
-    
-    resetUI();
-    initializeHost().then(() => {
-        // Update QR Code after host init
-        qrPopup.innerHTML = '';
-        new QRCode(qrPopup, { text: linkInput.value, width: 128, height: 128 });
-    });
-}
-
-// --- WEBRTC LOGIC ---
-function handleConnection(c) {
-    conn = c;
-
-    conn.on('open', () => {
+    p2p.destroy();
+    p2p = new VaultP2P(); // Reset instance
+    // Re-bind events for new instance
+    p2p.on('onConnect', () => {
         statusEl.innerText = 'SECURE LINK ESTABLISHED';
         statusEl.style.color = '#00e5ff';
         dropLabel.innerText = 'DROP FILE TO INITIATE TRANSFER';
-        sceneState.connected = true;
-
-        // Wenn eine Datei wartet (z.B. via Share Menu), jetzt senden
-        if (pendingFile) {
-            sendFile(pendingFile);
-            pendingFile = null;
-        }
+        visuals.state.connected = true;
     });
-
-    conn.on('data', handleData);
-
-    conn.on('close', () => {
-        statusEl.innerText = 'PEER DISCONNECTED';
-        statusEl.style.color = 'red';
-        sceneState.connected = false;
-        conn = null;
-        disconnectModal.style.display = 'flex';
-    });
+    // ... (other events would need re-binding or better structure, but for now this works for simple reset)
+    
+    resetUI();
+    // Reload page to ensure clean state (simplest way for now)
+    window.location.href = window.location.pathname;
 }
 
-async function handleData(encryptedData) {
-    // 1. Entschlüsseln
-    let decryptedBuffer;
-    try {
-        decryptedBuffer = await decryptData(encryptedData);
-    } catch (err) {
-        console.error("Decryption failed:", err);
-        return;
-    }
-
-    // 2. Prüfen ob Metadaten (JSON) oder Datei-Chunk
-    const textDecoder = new TextDecoder();
-    const text = textDecoder.decode(decryptedBuffer); // Versuche als Text zu lesen
-
-    if (text.includes('{"fileName":')) {
-        const info = JSON.parse(text);
-        fileInfo = info;
-        fileChunks = [];
-        receivedSize = 0;
-        showTransferUI(info.fileName);
-        updateParticleColor(getFileColor(info.fileName));
-        sceneState.transferring = true;
-    } else {
-        // It's a chunk
-        fileChunks.push(decryptedBuffer);
-        receivedSize += decryptedBuffer.byteLength;
-        updateProgress(receivedSize, fileInfo.fileSize);
-
-        // Check completion
-        if (receivedSize >= fileInfo.fileSize) {
-            const blob = new Blob(fileChunks);
-            addToHistory(fileInfo.fileName, blob);
-            receivedFilesCache.push({ fileName: fileInfo.fileName, blob: blob });
-            
-            // Preview Image if applicable
-            if (fileInfo.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                showPreview(blob);
-            }
-            
-            sceneState.transferring = false;
-            resetUI();
-        }
-    }
+function handleIncomingInfo(info) {
+    showTransferUI(info.fileName);
+    updateParticleColor(getFileColor(info.fileName));
+    visuals.state.transferring = true;
 }
 
-function sendFile(file) {
-    return new Promise(async (resolve, reject) => {
-        if (!conn) {
-            alert('No peer connected!');
-            return resolve();
-        }
+function handleFileReceived(blob, name) {
+    addToHistory(name, blob);
+    receivedFilesCache.push({ fileName: name, blob: blob });
+    
+    if (name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        showPreview(blob);
+    }
+    
+    visuals.state.transferring = false;
+    resetUI();
+}
 
-        sceneState.transferring = true;
-        showTransferUI(file.name);
-        updateParticleColor(getFileColor(file.name));
-
-        // Send Metadata
-        const meta = JSON.stringify({ fileName: file.name, fileSize: file.size });
-        const metaEncrypted = await encryptData(new TextEncoder().encode(meta));
-        conn.send(metaEncrypted);
-
-        // Send Chunks
-        const reader = new FileReader();
-        let offset = 0;
-
-        reader.onload = async (e) => {
-            const chunkEncrypted = await encryptData(e.target.result);
-            conn.send(chunkEncrypted);
-            offset += e.target.result.byteLength;
-            updateProgress(offset, file.size);
-
-            if (offset < file.size) {
-                readNextChunk();
-            } else {
-                sceneState.transferring = false;
-                resetUI();
-                resolve(); // Datei fertig gesendet
-            }
-        };
-
-        const readNextChunk = () => {
-            const slice = file.slice(offset, offset + CHUNK_SIZE);
-            reader.readAsArrayBuffer(slice);
-        };
-
-        readNextChunk();
-    });
+async function sendFile(file) {
+    visuals.state.transferring = true;
+    showTransferUI(file.name);
+    updateParticleColor(getFileColor(file.name));
+    
+    await p2p.sendFile(file);
+    
+    visuals.state.transferring = false;
+    resetUI();
 }
 
 // --- UI HELPERS ---
@@ -425,7 +345,7 @@ function resetUI() {
         }
         dropLabel.style.opacity = 1;
         progressBar.style.width = '0%';
-        updateParticleColor(ACCENT_COLOR);
+        updateParticleColor(visuals.ACCENT_COLOR);
         document.getElementById('preview-container').innerHTML = '';
         document.getElementById('file-name').innerText = 'Waiting...';
         // History nicht löschen
@@ -470,17 +390,17 @@ function setupDragAndDrop() {
     // 2. Drag & Drop Logic
     window.addEventListener('dragover', (e) => {
         e.preventDefault();
-        sceneState.hovering = true;
+        visuals.state.hovering = true;
     });
 
     window.addEventListener('dragleave', (e) => {
         e.preventDefault();
-        sceneState.hovering = false;
+        visuals.state.hovering = false;
     });
 
     window.addEventListener('drop', async (e) => {
         e.preventDefault();
-        sceneState.hovering = false;
+        visuals.state.hovering = false;
         if (e.dataTransfer.files.length > 0) {
             for (const file of e.dataTransfer.files) {
                 await sendFile(file);
@@ -496,23 +416,85 @@ function setupDragAndDrop() {
 
 function setupGallery() {
     const mediaInput = document.getElementById('media-input');
-    galleryBtn.addEventListener('click', () => mediaInput.click());
-}
-
-function getFileColor(fileName) {
-    const ext = fileName.split('.').pop().toLowerCase();
-    if (['pdf', 'doc', 'docx', 'txt'].includes(ext)) return 0xff3333; // Rot (Dokumente)
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 0x33ff33; // Grün (Bilder)
-    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 0xffaa00; // Orange (Archive)
-    if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 0xaa00ff; // Lila (Audio)
-    if (['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext)) return 0x3333ff; // Blau (Video)
-    return ACCENT_COLOR; // Standard Cyan
-}
-
-function updateParticleColor(hex) {
-    if (particles && particles.material.uniforms) {
-        particles.material.uniforms.color.value.setHex(hex);
+    if (galleryBtn && mediaInput) {
+        galleryBtn.addEventListener('click', () => mediaInput.click());
     }
+}
+
+function setupFaviconAnimation() {
+    // Firefox unterstützt animierte SVGs nativ als Favicon, da brauchen wir nichts tun
+    if (navigator.userAgent.toLowerCase().includes('firefox')) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    
+    const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+    link.type = 'image/x-icon';
+    link.rel = 'icon';
+    document.head.appendChild(link);
+
+    let angle1 = 0;
+    let angle2 = 0;
+    const accentColor = '#00e5ff';
+
+    function animate() {
+        ctx.clearRect(0, 0, 64, 64);
+        const cx = 32;
+        const cy = 32;
+
+        // Glow & Style
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = accentColor;
+        ctx.strokeStyle = accentColor;
+        ctx.lineCap = 'round';
+
+        // Outer Ring (Clockwise)
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle1);
+        ctx.beginPath();
+        ctx.arc(0, 0, 22, 0, Math.PI * 2);
+        ctx.lineWidth = 3;
+        ctx.setLineDash([12, 24]); 
+        ctx.stroke();
+        ctx.restore();
+
+        // Inner Ring (Counter-Clockwise)
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle2);
+        ctx.beginPath();
+        ctx.arc(0, 0, 18, 0, Math.PI * 2);
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 18]);
+        ctx.globalAlpha = 0.7;
+        ctx.stroke();
+        ctx.restore();
+
+        // Center (Event Horizon)
+        ctx.globalAlpha = 1.0;
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 11, 0, Math.PI * 2);
+        ctx.fillStyle = '#000';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Update angles
+        angle1 += 0.05;
+        angle2 -= 0.03;
+
+        // Favicon aktualisieren
+        link.href = canvas.toDataURL();
+        
+        // ~15 FPS für Performance (reicht für ein kleines Icon)
+        setTimeout(() => requestAnimationFrame(animate), 66);
+    }
+    
+    animate();
 }
 
 async function handleSharedFile() {
@@ -541,201 +523,20 @@ async function handleSharedFile() {
     }
 }
 
-// --- CRYPTO FUNCTIONS (AES-GCM) ---
-async function generateKey() {
-    return window.crypto.subtle.generateKey(
-        { name: "AES-GCM", length: 256 },
-        true,
-        ["encrypt", "decrypt"]
-    );
+function getFileColor(fileName) {
+    const ext = fileName.split('.').pop().toLowerCase();
+    if (['pdf', 'doc', 'docx', 'txt'].includes(ext)) return 0xff3333; // Rot (Dokumente)
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 0x33ff33; // Grün (Bilder)
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 0xffaa00; // Orange (Archive)
+    if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 0xaa00ff; // Lila (Audio)
+    if (['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext)) return 0x3333ff; // Blau (Video)
+    return visuals.ACCENT_COLOR; // Standard Cyan
 }
 
-async function exportKey(key) {
-    const exported = await window.crypto.subtle.exportKey("raw", key);
-    // Convert ArrayBuffer to Base64 string for URL
-    return btoa(String.fromCharCode(...new Uint8Array(exported)));
-}
-
-async function importKey(str) {
-    const raw = Uint8Array.from(atob(str), c => c.charCodeAt(0));
-    return window.crypto.subtle.importKey(
-        "raw", raw, "AES-GCM", true, ["encrypt", "decrypt"]
-    );
-}
-
-async function encryptData(data) {
-    // IV (Initialization Vector) muss für jede Verschlüsselung einzigartig sein
-    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-    const encrypted = await window.crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: iv }, sharedKey, data
-    );
-    // Wir packen IV + Encrypted Data zusammen
-    const buffer = new Uint8Array(iv.byteLength + encrypted.byteLength);
-    buffer.set(iv, 0);
-    buffer.set(new Uint8Array(encrypted), 12);
-    return buffer.buffer;
-}
-
-async function decryptData(packedData) {
-    const iv = packedData.slice(0, 12);
-    const data = packedData.slice(12);
-    return window.crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: new Uint8Array(iv) }, sharedKey, data
-    );
-}
-
-// --- THREE.JS VISUALS (THE BLACK HOLE) ---
-let scene, camera, renderer, particles;
-let sceneState = {
-    hovering: false,
-    transferring: false,
-    connected: false
-};
-
-function initThreeJS() {
-    const container = document.getElementById('canvas-container');
-    
-    // Scene Setup
-    scene = new THREE.Scene();
-    // Fog to blend edges
-    scene.fog = new THREE.FogExp2(0x050505, 0.002);
-
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 30;
-
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    container.appendChild(renderer.domElement);
-
-    // 2. The Accretion Disk (Particles)
-    const particleCount = 2000;
-    const pGeo = new THREE.BufferGeometry();
-    const pPos = new Float32Array(particleCount * 3);
-    const pSizes = new Float32Array(particleCount);
-
-    for(let i=0; i<particleCount; i++) {
-        // Create a flat ring distribution
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 8 + Math.random() * 15; // Ring from radius 8 to 23
-        
-        pPos[i*3] = Math.cos(angle) * radius;     // x
-        pPos[i*3+1] = (Math.random() - 0.5) * 1;  // y (flatness)
-        pPos[i*3+2] = Math.sin(angle) * radius;   // z
-
-        pSizes[i] = Math.random() * 0.2;
+function updateParticleColor(hex) {
+    if (visuals && visuals.particles && visuals.particles.material.uniforms) {
+        visuals.particles.material.uniforms.color.value.setHex(hex);
     }
-
-    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-    pGeo.setAttribute('size', new THREE.BufferAttribute(pSizes, 1));
-
-    // Custom Shader for Accretion Disk (Vortex Distortion)
-    const pMat = new THREE.ShaderMaterial({
-        uniforms: {
-            time: { value: 0 },
-            color: { value: new THREE.Color(ACCENT_COLOR) }
-        },
-        vertexShader: `
-            uniform float time;
-            attribute float size;
-            varying float vAlpha;
-            
-            void main() {
-                vec3 pos = position;
-                
-                // Newtonian Vortex: Inner particles orbit faster
-                float radius = length(pos.xz);
-                float speed = 20.0 / (radius + 0.1); 
-                float angle = time * speed * 0.1; // Rotation speed
-                
-                float c = cos(angle);
-                float s = sin(angle);
-                
-                // Rotate position around Y axis
-                float x = pos.x * c - pos.z * s;
-                float z = pos.x * s + pos.z * c;
-                pos.x = x;
-                pos.z = z;
-
-                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-                gl_PointSize = size * (300.0 / -mvPosition.z);
-                gl_Position = projectionMatrix * mvPosition;
-                
-                vAlpha = 0.8; 
-            }
-        `,
-        fragmentShader: `
-            uniform vec3 color;
-            varying float vAlpha;
-            void main() {
-                // Circular particle
-                vec2 coord = gl_PointCoord - vec2(0.5);
-                if (length(coord) > 0.5) discard;
-                
-                // Soft glow
-                float strength = 1.0 - (length(coord) * 2.0);
-                gl_FragColor = vec4(color, vAlpha * strength);
-            }
-        `,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-    });
-
-    particles = new THREE.Points(pGeo, pMat);
-    scene.add(particles);
-
-    // 3. Glow/Halo (Back plane)
-    const glowGeo = new THREE.PlaneGeometry(40, 40);
-    const glowMat = new THREE.MeshBasicMaterial({
-        color: ACCENT_COLOR,
-        transparent: true,
-        opacity: 0.05,
-        side: THREE.DoubleSide
-    });
-    const glow = new THREE.Mesh(glowGeo, glowMat);
-    glow.rotation.x = Math.PI / 2; // Lay flat
-    scene.add(glow);
-
-    // Animation Loop
-    animate();
-
-    // Resize Handler
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
 }
 
-function animate() {
-    requestAnimationFrame(animate);
-
-    // Base rotation
-    let rotationSpeed = 0.002;
-    let scaleTarget = 1;
-
-    // State-based modifications
-    if (sceneState.transferring) {
-        rotationSpeed = 0.05; // Fast spin
-        scaleTarget = 0.9; // Contract slightly
-    } else if (sceneState.hovering) {
-        rotationSpeed = 0.01;
-        scaleTarget = 1.2; // Expand event horizon
-    }
-
-    // Update Shader Uniforms
-    const time = performance.now() * 0.001;
-    if (particles.material.uniforms) particles.material.uniforms.time.value = time;
-
-    // Camera "breathing" or distortion effect
-    if (sceneState.hovering || sceneState.transferring) {
-        camera.position.z = THREE.MathUtils.lerp(camera.position.z, 20, 0.05); // Zoom in
-    } else {
-        camera.position.z = THREE.MathUtils.lerp(camera.position.z, 30, 0.05); // Return to normal
-    }
-
-    renderer.render(scene, camera);
-}
-
-init();
+document.addEventListener('DOMContentLoaded', init);
