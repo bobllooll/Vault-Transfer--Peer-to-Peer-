@@ -7,7 +7,7 @@ let pendingFile = null; // Datei, die auf Verbindung wartet
 let receivedFilesCache = []; // Speicher für alle empfangenen Dateien
 
 // --- UI ELEMENTS ---
-let statusEl, linkInput, dropLabel, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer;
+let statusEl, linkInput, dropLabel, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer, limitModal, limitInput, confirmLimitBtn;
 
 function setupUI() {
     statusEl = document.getElementById('connection-status');
@@ -30,6 +30,9 @@ function setupUI() {
     startCreateBtn = document.getElementById('start-create-btn');
     startScanBtn = document.getElementById('start-scan-btn');
     qrScannerContainer = document.getElementById('qr-scanner-container');
+    limitModal = document.getElementById('limit-modal');
+    limitInput = document.getElementById('limit-input');
+    confirmLimitBtn = document.getElementById('confirm-limit-btn');
 }
 
 // --- INITIALIZATION ---
@@ -155,6 +158,15 @@ async function init() {
     });
 
     p2p.on('onError', (err) => {
+        // Fix: Ignoriere Netzwerk-Fehler beim Tab-Wechsel (Mobile) und verbinde neu
+        if (err.type === 'network' || err.type === 'disconnected') {
+            if (p2p.peer && !p2p.peer.destroyed) {
+                p2p.peer.reconnect();
+            }
+            showToast('RECONNECTING TO SERVER...');
+            return; // Kein Fehler-Modal anzeigen
+        }
+
         statusEl.innerText = 'CONNECTION ERROR';
         statusEl.style.color = 'red';
         
@@ -179,13 +191,10 @@ async function init() {
 
 async function initializeHost() {
     // Ask for limit
-    let limit = prompt("Max Users (including you)?", "5");
-    let maxPeers = 4;
-    if (limit && !isNaN(limit)) {
-        maxPeers = parseInt(limit) - 1;
-        if (maxPeers < 1) maxPeers = 1;
-    }
-
+    const limit = await getUserLimit();
+    let maxPeers = limit - 1;
+    if (maxPeers < 1) maxPeers = 1;
+    
     statusEl.innerText = 'INITIALIZING...';
     const { roomId: id, keyString } = await p2p.initHost(maxPeers);
     roomId = id;
@@ -196,6 +205,32 @@ async function initializeHost() {
     statusEl.innerText = 'WAITING FOR PEER (1 USER)';
     statusEl.style.color = '#ffaa00';
     updateQRCode(fullLink);
+}
+
+function getUserLimit() {
+    return new Promise((resolve) => {
+        limitModal.style.display = 'flex';
+        limitInput.value = "5";
+        limitInput.focus();
+
+        function cleanup() {
+            confirmLimitBtn.removeEventListener('click', onConfirm);
+            limitInput.removeEventListener('keydown', onKey);
+            limitModal.style.display = 'none';
+        }
+
+        function onConfirm() {
+            cleanup();
+            let val = parseInt(limitInput.value);
+            if (isNaN(val) || val < 2) val = 2;
+            resolve(val);
+        }
+
+        function onKey(e) { if (e.key === 'Enter') onConfirm(); }
+
+        confirmLimitBtn.addEventListener('click', onConfirm);
+        limitInput.addEventListener('keydown', onKey);
+    });
 }
 
 async function initializeGuest(id) {

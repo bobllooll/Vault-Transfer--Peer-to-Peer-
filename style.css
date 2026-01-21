@@ -18,7 +18,7 @@ body {
     color: var(--text-color);
     font-family: var(--font-mono);
     overflow: hidden;
-    height: 100vh;
+    height: 100dvh;
     width: 100vw;
 }
 
@@ -311,13 +311,16 @@ footer {
 }
 
 #qr-popup {
-    position: absolute;
-    bottom: 100%;
-    right: 0;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     background: white;
     padding: 10px;
     display: none;
     border: 2px solid var(--accent-color);
+    z-index: 2000;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
 }
 
 /* --- TOAST NOTIFICATIONS --- */
@@ -355,14 +358,17 @@ footer {
 }
 
 /* --- MODALS & BANNERS --- */
-#disconnect-modal {
-    position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
+#disconnect-modal, #limit-modal {
+    position: fixed;
+    top: 0; 
+    left: 0; 
+    width: 100vw; 
+    height: 100dvh; /* Wichtig für Mobile: Dynamische Höhe nutzen */
     background: rgba(0,0,0,0.8);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 100;
+    z-index: 2000;
     backdrop-filter: blur(5px);
 }
 
@@ -372,6 +378,8 @@ footer {
     background: #000;
     text-align: center;
     box-shadow: 0 0 20px var(--accent-dim);
+    width: 90%; /* Damit es auf Handys nicht am Rand klebt */
+    max-width: 400px;
 }
 
 #reconnect-btn {
@@ -381,6 +389,24 @@ footer {
     padding: 0.5rem 1rem;
     font-weight: bold;
     cursor: pointer;
+}
+
+#limit-input {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    padding: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    width: 100px;
+    text-align: center;
+    margin: 1.5rem 0;
+    outline: none;
+    border-radius: 4px;
+}
+
+#limit-input:focus {
+    box-shadow: 0 0 10px var(--accent-dim);
 }
 
 #gdpr-banner {
@@ -403,6 +429,16 @@ footer {
     padding: 0.3rem 0.8rem;
     cursor: pointer;
     font-weight: bold;
+}
+
+#confirm-limit-btn {
+    background: var(--accent-color);
+    border: none;
+    padding: 0.5rem 1.5rem;
+    font-weight: bold;
+    cursor: pointer;
+    display: block;
+    margin: 0 auto;
 }
 
 /* --- START SCREEN --- */
@@ -479,6 +515,7 @@ footer {
 @media (max-width: 600px) {
     .ui-layer {
         padding: 1rem;
+        padding-bottom: 4rem; /* Mehr Platz unten für Mobile-Browser-Leisten */
     }
     
     header {
