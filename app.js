@@ -17,6 +17,7 @@ let receivedFilesCache = []; // Speicher für alle empfangenen Dateien
 const statusEl = document.getElementById('connection-status');
 const linkInput = document.getElementById('room-link');
 const dropLabel = document.getElementById('drop-label');
+const galleryBtn = document.getElementById('gallery-btn');
 const transferPanel = document.getElementById('transfer-panel');
 const progressBar = document.getElementById('progress-bar');
 const speedEl = document.getElementById('transfer-speed');
@@ -29,6 +30,10 @@ const reconnectBtn = document.getElementById('reconnect-btn');
 const gdprBanner = document.getElementById('gdpr-banner');
 const downloadAllBtn = document.getElementById('download-all-btn');
 const closePanelBtn = document.getElementById('close-panel-btn');
+const startScreen = document.getElementById('start-screen');
+const startCreateBtn = document.getElementById('start-create-btn');
+const startScanBtn = document.getElementById('start-scan-btn');
+const qrScannerContainer = document.getElementById('qr-scanner-container');
 
 // --- INITIALIZATION ---
 async function init() {
@@ -48,61 +53,25 @@ async function init() {
         gdprBanner.style.display = 'flex';
     }
 
+    // Check if Mobile (simple width check or user agent)
+    const isMobile = window.innerWidth <= 768;
+
     if (!roomId) {
-        // --- HOST MODE (Erstellt den Raum) ---
-        roomId = uuid.v4().split('-')[0]; // Short ID
-        
-        // Generiere Verschlüsselungs-Key
-        sharedKey = await generateKey();
-        const keyString = await exportKey(sharedKey);
-        
-        // URL generieren aber NICHT in die Adressleiste schreiben (damit Reload = Neuer Raum)
-        const fullLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}#${keyString}`;
-        linkInput.value = fullLink;
-
-        // Peer mit der Room-ID als Kennung erstellen
-        peer = new Peer(roomId);
-
-        peer.on('open', (id) => {
-            statusEl.innerText = 'WAITING FOR PEER';
-            statusEl.style.color = '#ffaa00';
-        });
-
-        // Warten auf Verbindung vom Gast
-        peer.on('connection', (c) => {
-            handleConnection(c);
-        });
-
-    } else {
-        // --- GUEST MODE (Tritt bei) ---
-        // Lese Key aus dem URL Hash
-        const hash = window.location.hash.substring(1);
-        if (hash) {
-            sharedKey = await importKey(hash);
+        if (isMobile) {
+            // Show Start Screen on Mobile
+            startScreen.style.display = 'flex';
         } else {
-            alert('Fehler: Kein Sicherheitsschlüssel in der URL gefunden!');
-            return;
+            // Auto-create on Desktop
+            initializeHost();
         }
-        linkInput.value = window.location.href;
-
-        peer = new Peer(); // Zufällige ID für den Gast
-
-        peer.on('open', (id) => {
-            statusEl.innerText = 'CONNECTING...';
-            // Verbinde zum Host (roomId)
-            const c = peer.connect(roomId);
-            handleConnection(c);
-        });
-
-        peer.on('error', (err) => {
-            console.error(err);
-            alert('Connection Error: Raum nicht gefunden oder offline.');
-        });
+    } else {
+        initializeGuest(roomId);
     }
 
     // 3. Visuals
     initThreeJS();
     setupDragAndDrop();
+    setupGallery();
     setupQRCode();
     setupShareButton();
 
@@ -126,6 +95,76 @@ async function init() {
     closePanelBtn.addEventListener('click', () => {
         transferPanel.style.display = 'none';
     });
+
+    // Start Screen Listeners
+    startCreateBtn.addEventListener('click', () => {
+        startScreen.style.display = 'none';
+        initializeHost();
+    });
+
+    startScanBtn.addEventListener('click', () => {
+        startQRScanner();
+    });
+
+    document.getElementById('close-scanner-btn').addEventListener('click', () => {
+        qrScannerContainer.style.display = 'none';
+        if (html5QrCode) {
+            html5QrCode.stop().catch(err => console.error(err));
+        }
+    });
+}
+
+async function initializeHost() {
+    // --- HOST MODE (Erstellt den Raum) ---
+    roomId = uuid.v4().split('-')[0]; // Short ID
+    
+    // Generiere Verschlüsselungs-Key
+    sharedKey = await generateKey();
+    const keyString = await exportKey(sharedKey);
+    
+    // URL generieren aber NICHT in die Adressleiste schreiben
+    const fullLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}#${keyString}`;
+    linkInput.value = fullLink;
+
+    // Peer mit der Room-ID als Kennung erstellen
+    peer = new Peer(roomId);
+
+    peer.on('open', (id) => {
+        statusEl.innerText = 'WAITING FOR PEER';
+        statusEl.style.color = '#ffaa00';
+    });
+
+    // Warten auf Verbindung vom Gast
+    peer.on('connection', (c) => {
+        handleConnection(c);
+    });
+}
+
+async function initializeGuest(id) {
+    // --- GUEST MODE (Tritt bei) ---
+    // Lese Key aus dem URL Hash
+    const hash = window.location.hash.substring(1);
+    if (hash) {
+        sharedKey = await importKey(hash);
+    } else {
+        alert('Fehler: Kein Sicherheitsschlüssel in der URL gefunden!');
+        return;
+    }
+    linkInput.value = window.location.href;
+
+    peer = new Peer(); // Zufällige ID für den Gast
+
+    peer.on('open', (myId) => {
+        statusEl.innerText = 'CONNECTING...';
+        // Verbinde zum Host (roomId)
+        const c = peer.connect(id);
+        handleConnection(c);
+    });
+
+    peer.on('error', (err) => {
+        console.error(err);
+        alert('Connection Error: Raum nicht gefunden oder offline.');
+    });
 }
 
 function setupQRCode() {
@@ -137,6 +176,28 @@ function setupQRCode() {
     qrBtn.addEventListener('click', () => {
         qrPopup.style.display = qrPopup.style.display === 'block' ? 'none' : 'block';
     });
+}
+
+let html5QrCode;
+function startQRScanner() {
+    startScreen.style.display = 'none';
+    qrScannerContainer.style.display = 'flex';
+    
+    html5QrCode = new Html5Qrcode("qr-reader");
+    html5QrCode.start(
+        { facingMode: "environment" }, 
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText, decodedResult) => {
+            // Handle Success
+            console.log(`Scan result: ${decodedText}`);
+            html5QrCode.stop();
+            qrScannerContainer.style.display = 'none';
+            window.location.href = decodedText; // Redirect to room
+        },
+        (errorMessage) => {
+            // parse error, ignore
+        }
+    ).catch(err => console.error(err));
 }
 
 function setupShareButton() {
@@ -164,34 +225,11 @@ async function createNewRoom() {
     if (conn) { conn.close(); conn = null; }
     if (peer) { peer.destroy(); peer = null; }
     
-    // Reset State
-    roomId = uuid.v4().split('-')[0];
-    sharedKey = await generateKey();
-    const keyString = await exportKey(sharedKey);
-    
-    // Update UI
-    const fullLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}#${keyString}`;
-    linkInput.value = fullLink;
-    
     resetUI();
-    statusEl.innerText = 'WAITING FOR PEER';
-    statusEl.style.color = '#ffaa00';
-    
-    // Re-init Peer
-    peer = new Peer(roomId);
-    peer.on('open', (id) => {
-        console.log('New Room Created:', id);
-    });
-    peer.on('connection', (c) => {
-        handleConnection(c);
-    });
-    
-    // Update QR Code
-    qrPopup.innerHTML = '';
-    new QRCode(qrPopup, {
-        text: fullLink,
-        width: 128,
-        height: 128
+    initializeHost().then(() => {
+        // Update QR Code after host init
+        qrPopup.innerHTML = '';
+        new QRCode(qrPopup, { text: linkInput.value, width: 128, height: 128 });
     });
 }
 
@@ -405,6 +443,7 @@ function downloadFile(blob, fileName) {
 
 function setupDragAndDrop() {
     const fileInput = document.getElementById('file-input');
+    const mediaInput = document.getElementById('media-input');
     
     // 1. Click to Upload (Mobile/Desktop)
     dropLabel.addEventListener('click', () => fileInput.click());
@@ -417,6 +456,16 @@ function setupDragAndDrop() {
             fileInput.value = ''; // Reset für nächste Auswahl
         }
     });
+
+    // Media Input (Gallery)
+    if (mediaInput) {
+        mediaInput.addEventListener('change', async () => {
+            if (mediaInput.files.length > 0) {
+                for (const file of mediaInput.files) await sendFile(file);
+                mediaInput.value = '';
+            }
+        });
+    }
 
     // 2. Drag & Drop Logic
     window.addEventListener('dragover', (e) => {
@@ -443,6 +492,11 @@ function setupDragAndDrop() {
         linkInput.select();
         document.execCommand('copy');
     });
+}
+
+function setupGallery() {
+    const mediaInput = document.getElementById('media-input');
+    galleryBtn.addEventListener('click', () => mediaInput.click());
 }
 
 function getFileColor(fileName) {

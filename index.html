@@ -11,6 +11,7 @@
     <!-- Dependencies -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js"></script>
 </head>
@@ -31,9 +32,11 @@
 
         <main>
             <input type="file" id="file-input" multiple style="display: none;">
+            <input type="file" id="media-input" multiple accept="image/*,video/*" style="display: none;">
             <div class="drop-zone-label" id="drop-label">
                 DRAG FILE OR TAP TO UPLOAD
             </div>
+            <button id="gallery-btn" class="mobile-only">OPEN GALLERY</button>
             
             <div class="transfer-info" id="transfer-panel" style="display: none;">
                 <div class="file-meta">

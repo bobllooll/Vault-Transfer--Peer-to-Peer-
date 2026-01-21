@@ -98,6 +98,18 @@ main {
     transition: all 0.3s ease;
 }
 
+#gallery-btn {
+    display: none; /* Hidden on desktop by default */
+    background: transparent;
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    padding: 10px 20px;
+    font-family: var(--font-mono);
+    font-weight: bold;
+    margin-bottom: 2rem;
+    cursor: pointer;
+}
+
 /* Hover effect for the label */
 .drop-zone-label:hover {
     color: var(--accent-color);
@@ -363,6 +375,76 @@ footer {
     font-weight: bold;
 }
 
+/* --- START SCREEN --- */
+#start-screen {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: var(--bg-color);
+    z-index: 300;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.start-content {
+    text-align: center;
+}
+
+.logo-large {
+    font-family: var(--font-display);
+    font-size: 2.5rem;
+    margin-bottom: 3rem;
+    text-shadow: 0 0 20px var(--accent-dim);
+}
+
+.start-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.start-buttons button {
+    background: transparent;
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    padding: 1rem 2rem;
+    font-size: 1.2rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.start-buttons button:hover {
+    background: var(--accent-dim);
+    box-shadow: 0 0 15px var(--accent-dim);
+}
+
+/* --- QR SCANNER --- */
+#qr-scanner-container {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: #000;
+    z-index: 400;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+#qr-reader {
+    width: 100%;
+    max-width: 500px;
+}
+
+#close-scanner-btn {
+    margin-top: 20px;
+    background: var(--accent-color);
+    border: none;
+    padding: 10px 20px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
 /* --- MOBILE RESPONSIVE --- */
 @media (max-width: 600px) {
     .ui-layer {
@@ -395,5 +477,9 @@ footer {
         width: 100%;
         margin: 5px 0;
         text-align: center;
+    }
+
+    #gallery-btn.mobile-only {
+        display: block;
     }
 }
