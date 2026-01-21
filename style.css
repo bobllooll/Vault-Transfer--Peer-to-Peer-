@@ -108,6 +108,7 @@ main {
     font-weight: bold;
     margin-bottom: 2rem;
     cursor: pointer;
+    pointer-events: auto;
 }
 
 /* Hover effect for the label */

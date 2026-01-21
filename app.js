@@ -127,12 +127,39 @@ async function init() {
             sendFile(pendingFile);
             pendingFile = null;
         }
+        disconnectModal.style.display = 'none'; // Hide modal on reconnect
     });
 
     p2p.on('onDisconnect', () => {
         statusEl.innerText = 'PEER DISCONNECTED';
         statusEl.style.color = 'red';
         visuals.state.connected = false;
+        disconnectModal.style.display = 'flex';
+        
+        // Update Modal Text for Guest
+        if (!p2p.isHost) {
+            const modalTitle = document.querySelector('#disconnect-modal h2');
+            const modalText = document.querySelector('#disconnect-modal p');
+            modalTitle.innerText = 'CONNECTION LOST';
+            modalText.innerText = 'Attempting to re-establish link...';
+        }
+    });
+
+    p2p.on('onError', (err) => {
+        statusEl.innerText = 'CONNECTION ERROR';
+        statusEl.style.color = 'red';
+        
+        const modalTitle = document.querySelector('#disconnect-modal h2');
+        const modalText = document.querySelector('#disconnect-modal p');
+        
+        if (err.type === 'peer-unavailable') {
+            modalTitle.innerText = 'ROOM NOT FOUND';
+            modalText.innerText = 'The Event Horizon has vanished. The host may have disconnected or the ID is invalid.';
+        } else {
+            modalTitle.innerText = 'CONNECTION ERROR';
+            modalText.innerText = `An anomaly occurred: ${err.type}`;
+        }
+        
         disconnectModal.style.display = 'flex';
     });
 

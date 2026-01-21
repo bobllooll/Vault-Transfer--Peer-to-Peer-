@@ -9,13 +9,18 @@ class VaultP2P {
             onDisconnect: () => {},
             onDataProgress: () => {},
             onFileReceived: () => {},
-            onIncomingInfo: () => {}
+            onIncomingInfo: () => {},
+            onError: () => {}
         };
         
         // State
         this.fileChunks = [];
         this.fileInfo = null;
         this.receivedSize = 0;
+        
+        // Reconnect State
+        this.isHost = false;
+        this.targetRoomId = null;
     }
 
     on(event, fn) {
@@ -23,6 +28,7 @@ class VaultP2P {
     }
 
     async initHost() {
+        this.isHost = true;
         const roomId = uuid.v4().split('-')[0];
         this.sharedKey = await this.generateKey();
         const keyString = await this.exportKey(this.sharedKey);
@@ -30,11 +36,17 @@ class VaultP2P {
         this.peer = new Peer(roomId);
         
         this.peer.on('connection', (c) => this.handleConnection(c));
+        this.peer.on('error', (err) => {
+            console.error('PeerJS Error (Host):', err);
+            this.callbacks.onError(err);
+        });
         
         return { roomId, keyString };
     }
 
     async initGuest(roomId, keyString) {
+        this.isHost = false;
+        this.targetRoomId = roomId;
         this.sharedKey = await this.importKey(keyString);
         this.peer = new Peer();
         
@@ -44,8 +56,8 @@ class VaultP2P {
         });
         
         this.peer.on('error', (err) => {
-            console.error(err);
-            alert('Connection Error: Room not found or offline.');
+            console.error('PeerJS Error (Guest):', err);
+            this.callbacks.onError(err);
         });
     }
 
@@ -58,6 +70,9 @@ class VaultP2P {
         this.conn.on('close', () => {
             this.conn = null;
             this.callbacks.onDisconnect();
+            if (!this.isHost && this.targetRoomId) {
+                this.reconnect();
+            }
         });
     }
 
@@ -96,6 +111,16 @@ class VaultP2P {
         } catch (err) {
             console.error("Data handling error:", err);
         }
+    }
+
+    reconnect() {
+        console.log('Attempting auto-reconnect...');
+        setTimeout(() => {
+            if (!this.conn && this.peer && !this.peer.destroyed) {
+                const c = this.peer.connect(this.targetRoomId);
+                this.handleConnection(c);
+            }
+        }, 2000);
     }
 
     sendFile(file) {
