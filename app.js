@@ -5,6 +5,7 @@ let visuals; // Instance of VaultVisuals
 
 let pendingFiles = []; // Warteschlange für Dateien
 let receivedFilesCache = []; // Speicher für alle empfangenen Dateien
+let currentConnectionType = ''; // Speichert den aktuellen Verbindungstyp
 
 // --- UI ELEMENTS ---
 let statusEl, linkInput, dropLabel, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer, limitModal, limitInput, confirmLimitBtn;
@@ -127,7 +128,8 @@ async function init() {
 function setupP2PEvents() {
     // --- P2P EVENTS (Re-usable for new rooms) ---
     p2p.on('onConnect', async () => {
-        statusEl.innerText = `CONNECTED`;
+        // Status wird durch onConnectionType oder onPeerCountUpdate final gesetzt
+        statusEl.innerText = `CONNECTED...`;
         statusEl.style.color = '#00e5ff';
         dropLabel.innerText = 'DROP FILE TO INITIATE TRANSFER';
         visuals.state.connected = true;
@@ -143,6 +145,12 @@ function setupP2PEvents() {
             for (const file of queue) await sendFile(file);
         }
         disconnectModal.style.display = 'none'; // Hide modal on reconnect
+    });
+
+    p2p.on('onConnectionType', (type) => {
+        currentConnectionType = type;
+        // Update Status Text sofort
+        updateStatusText(p2p.peers.length || 1);
     });
 
     p2p.on('onDisconnect', (peerCount) => {
@@ -194,7 +202,7 @@ function setupP2PEvents() {
             modalText.innerText = 'The room has reached maximum capacity. Connection rejected.';
         } else if (err.type === 'connection-timed-out') {
             modalTitle.innerText = 'CONNECTION FAILED';
-            modalText.innerText = 'Direct link blocked by firewall.\n\nTRY THIS:\n1. Disable WiFi and use Mobile Data (4G/5G).\n2. Or try a different network.';
+            modalText.innerText = 'Carrier Firewall detected (Symmetric NAT).\n\nWORKAROUND:\n1. Enable "Hotspot" on your phone.\n2. Connect laptop to that Hotspot.\n3. Reload page.';
         } else {
             modalTitle.innerText = 'CONNECTION ERROR';
             modalText.innerText = `An anomaly occurred: ${err.type}`;
@@ -219,10 +227,15 @@ function setupP2PEvents() {
         
         console.log("DEBUG: Display Count calculated:", displayCount);
         
-        statusEl.innerText = `CONNECTED (${displayCount} USERS)`;
+        updateStatusText(displayCount);
         visuals.state.connected = true;
         visuals.updateTopology(data);
     });
+}
+
+function updateStatusText(count) {
+    const typeInfo = currentConnectionType ? ` | ${currentConnectionType}` : '';
+    statusEl.innerText = `CONNECTED (${count} USERS${typeInfo})`;
 }
 
 async function initializeHost() {

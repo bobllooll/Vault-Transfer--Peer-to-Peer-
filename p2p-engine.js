@@ -1,13 +1,30 @@
 // Konfiguration für bessere Verbindungen (STUN hilft durch Firewalls)
 const PEER_CONFIG = {
+    debug: 2, // Zeigt Warnungen in der Konsole an
     config: {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
-        ]
+            
+            // TURN Server (Relay): Der "Dietrich" für Firewalls
+            // Leitet Traffic über Port 80/443 um, wenn direktes P2P blockiert ist
+            {
+                urls: "turn:openrelay.metered.ca:80",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            },
+            {
+                urls: "turn:openrelay.metered.ca:443",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            },
+            {
+                urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            }
+        ],
+        iceCandidatePoolSize: 4 // Reduziert, um Netzwerk-Überlastung (Timeout) zu vermeiden
     }
 };
 
@@ -24,7 +41,8 @@ class VaultP2P {
             onFileReceived: () => {},
             onIncomingInfo: () => {},
             onPeerCountUpdate: () => {},
-            onError: () => {}
+            onError: () => {},
+            onConnectionType: () => {}
         };
         
         // State
@@ -83,8 +101,8 @@ class VaultP2P {
             console.log(`GUEST: PeerJS connection to signaling server is open. My ID is ${id}.`);
             console.log(`GUEST: Attempting to connect to host: ${roomId}`);
             
-            // Explizit reliable setzen für stabilere Dateiübertragung
-            const c = this.peer.connect(roomId, { reliable: true });
+            // Standard-Verbindung nutzen (oft kompatibler mit Mobile-Netzwerken)
+            const c = this.peer.connect(roomId);
             this.handleConnection(c);
         });
         
@@ -110,6 +128,7 @@ class VaultP2P {
             // Handshake: Sende eigene Infos
             c.send({ type: 'hello', id: this.peer.id, device: this.myDeviceType });
             this.callbacks.onConnect(this.connections.length);
+            this.checkConnectionType(c);
         });
         
         // WICHTIG: Fehler bei der Verbindung abfangen (z.B. Timeout, Firewall)
@@ -134,6 +153,31 @@ class VaultP2P {
                 this.reconnect();
             }
         });
+    }
+
+    async checkConnectionType(c) {
+        // Warte kurz, bis sich die Verbindung stabilisiert hat
+        setTimeout(async () => {
+            if (!c.peerConnection) return;
+            try {
+                const stats = await c.peerConnection.getStats();
+                let type = 'UNKNOWN';
+                
+                stats.forEach(report => {
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        const remoteId = report.remoteCandidateId;
+                        if (remoteId && stats.has(remoteId)) {
+                            const remote = stats.get(remoteId);
+                            if (remote.candidateType === 'relay') type = 'RELAY (TURN)';
+                            else if (remote.candidateType === 'srflx') type = 'DIRECT (WAN)';
+                            else if (remote.candidateType === 'host') type = 'DIRECT (LAN)';
+                            else type = 'DIRECT';
+                        }
+                    }
+                });
+                if (type !== 'UNKNOWN') this.callbacks.onConnectionType(type);
+            } catch (e) { console.warn("Stats error", e); }
+        }, 1000);
     }
 
     cleanupConnection(c) {
