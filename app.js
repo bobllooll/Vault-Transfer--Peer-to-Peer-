@@ -305,6 +305,12 @@ function getUserLimit() {
 async function initializeGuest(id) {
     const hash = window.location.hash.substring(1);
     roomId = id; // Global speichern für Retries
+    
+    // WICHTIG: Alte Verbindung komplett killen bevor wir es neu versuchen
+    if (p2p) p2p.destroy();
+    p2p = new VaultP2P();
+    setupP2PEvents(); // Events neu binden
+
     if (hash) {
         const deviceType = window.innerWidth <= 768 ? 'mobile' : 'desktop';
         await p2p.initGuest(id, hash, deviceType);

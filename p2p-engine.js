@@ -5,6 +5,7 @@ const PEER_CONFIG = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun.nextcloud.com:443' }, // WICHTIG: Port 443 STUN für strikte Firewalls
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
             { urls: 'stun:stun4.l.google.com:19302' },
@@ -59,6 +60,7 @@ class VaultP2P {
         this.targetRoomId = null;
         this.maxPeers = Infinity;
         this.pingInterval = null;
+        this.signalingKeepAlive = null; // Überwacht die Verbindung zum Server
         this.myDeviceType = 'desktop';
         this.peers = []; // Liste aller Peers {id, device}
     }
@@ -68,6 +70,8 @@ class VaultP2P {
     }
 
     async initHost(maxPeers = Infinity, deviceType = 'desktop') {
+        if (this.peer) this.destroy(); // Sauberen Start erzwingen
+
         this.isHost = true;
         this.maxPeers = maxPeers;
         this.myDeviceType = deviceType;
@@ -93,12 +97,22 @@ class VaultP2P {
             // WICHTIG: Wenn Verbindung zum Server abreißt (z.B. Standby), sofort neu verbinden!
             this.peer.on('disconnected', () => {
                 console.log('HOST: Lost connection to signaling server. Reconnecting...');
-                if (!this.peer.destroyed) this.peer.reconnect();
+                this.reconnectSignaling();
             });
+
+            // Aktiver Heartbeat für den Signaling-Server (gegen "Silent Drops")
+            this.signalingKeepAlive = setInterval(() => {
+                if (this.peer && !this.peer.destroyed && this.peer.disconnected) {
+                    console.warn('HOST: Detected silent signaling disconnect. Forcing reconnect.');
+                    this.reconnectSignaling();
+                }
+            }, 5000);
         });
     }
 
     async initGuest(roomId, keyString, deviceType = 'desktop') {
+        if (this.peer) this.destroy(); // Sauberen Start erzwingen
+
         console.log(`GUEST: Initializing connection to room ${roomId}`);
         this.isHost = false;
         this.myDeviceType = deviceType;
@@ -123,7 +137,7 @@ class VaultP2P {
         // Auch als Gast die Verbindung zum Server halten
         this.peer.on('disconnected', () => {
             console.log('GUEST: Lost connection to signaling server. Reconnecting...');
-            if (!this.peer.destroyed) this.peer.reconnect();
+            this.reconnectSignaling();
         });
     }
 
@@ -158,7 +172,7 @@ class VaultP2P {
         this.handleConnection(c);
 
         // STRATEGIE: Aggressive ICE-Restart Heuristik (Watchdog)
-        // Wir warten nicht 45s. Wenn nach 6s nichts passiert, ist UDP wahrscheinlich blockiert.
+        // Wir warten nicht 45s. Wenn nach 4s nichts passiert, ist UDP wahrscheinlich blockiert.
         setTimeout(() => {
             if (!c.open && this.connections.length === 1 && this.connections[0] === c) {
                 if (!forceRelay) {
@@ -168,7 +182,7 @@ class VaultP2P {
                     this.connectToHost(roomId, true); // Retry mit Relay
                 }
             }
-        }, 6000);
+        }, 4000); // Reduziert auf 4s für schnelleren Fallback
     }
 
     handleConnection(c) {
@@ -335,6 +349,10 @@ class VaultP2P {
         }, 2000); // Alle 2 Sekunden ein Lebenszeichen senden
     }
 
+    reconnectSignaling() {
+        if (this.peer && !this.peer.destroyed) this.peer.reconnect();
+    }
+
     reconnect() {
         console.log('Attempting auto-reconnect...');
         setTimeout(() => {
@@ -385,9 +403,11 @@ class VaultP2P {
 
     destroy() {
         if (this.pingInterval) clearInterval(this.pingInterval);
+        if (this.signalingKeepAlive) clearInterval(this.signalingKeepAlive);
         this.connections.forEach(c => c.close());
         this.connections = [];
         if (this.peer) this.peer.destroy();
+        this.peer = null;
     }
 
     // --- CRYPTO UTILS ---
