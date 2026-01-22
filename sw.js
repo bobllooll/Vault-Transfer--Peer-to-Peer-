@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vault-transfer-v6.2'; // VERSION BUMP: Zwingt Browser zum Update
+const CACHE_NAME = 'vault-transfer-v6.3'; // VERSION BUMP: Zwingt Browser zum Update
 const ASSETS = [
     '/',
     '/index.html',

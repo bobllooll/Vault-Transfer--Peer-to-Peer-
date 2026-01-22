@@ -6,6 +6,7 @@ let visuals; // Instance of VaultVisuals
 let pendingFiles = []; // Warteschlange für Dateien
 let receivedFilesCache = []; // Speicher für alle empfangenen Dateien
 let currentConnectionType = ''; // Speichert den aktuellen Verbindungstyp
+let connectionRetries = 0; // Zähler für Verbindungsversuche
 
 // --- UI ELEMENTS ---
 let statusEl, linkInput, dropLabel, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer, limitModal, limitInput, confirmLimitBtn;
@@ -195,8 +196,16 @@ function setupP2PEvents() {
         const modalText = document.querySelector('#disconnect-modal p');
         
         if (err.type === 'peer-unavailable') {
-            modalTitle.innerText = 'ROOM NOT FOUND';
-            modalText.innerText = 'The Event Horizon has vanished. The host may have disconnected or the ID is invalid.';
+            // Auto-Retry Logik (3 Versuche)
+            if (connectionRetries < 3) {
+                connectionRetries++;
+                console.log(`Retrying connection (${connectionRetries}/3)...`);
+                showToast(`ROOM NOT FOUND. RETRYING (${connectionRetries}/3)...`);
+                setTimeout(() => initializeGuest(roomId), 2000);
+                return; // Modal noch nicht anzeigen
+            }
+            modalTitle.innerText = 'HOST NOT FOUND';
+            modalText.innerText = 'Could not find the Host device.\n\nPOSSIBLE CAUSES:\n1. Host device went to sleep/standby.\n2. Host tab was closed.\n3. Host has no internet.';
         } else if (err.type === 'room-full') {
             modalTitle.innerText = 'ACCESS DENIED';
             modalText.innerText = 'The room has reached maximum capacity. Connection rejected.';
@@ -289,6 +298,7 @@ function getUserLimit() {
 
 async function initializeGuest(id) {
     const hash = window.location.hash.substring(1);
+    roomId = id; // Global speichern für Retries
     if (hash) {
         const deviceType = window.innerWidth <= 768 ? 'mobile' : 'desktop';
         await p2p.initGuest(id, hash, deviceType);

@@ -85,6 +85,12 @@ class VaultP2P {
                 console.error('PeerJS Error (Host):', err);
                 this.callbacks.onError(err);
             });
+
+            // WICHTIG: Wenn Verbindung zum Server abreißt (z.B. Standby), sofort neu verbinden!
+            this.peer.on('disconnected', () => {
+                console.log('HOST: Lost connection to signaling server. Reconnecting...');
+                if (!this.peer.destroyed) this.peer.reconnect();
+            });
         });
     }
 
@@ -109,6 +115,12 @@ class VaultP2P {
         this.peer.on('error', (err) => {
             console.error('PeerJS Error (Guest):', err);
             this.callbacks.onError(err);
+        });
+
+        // Auch als Gast die Verbindung zum Server halten
+        this.peer.on('disconnected', () => {
+            console.log('GUEST: Lost connection to signaling server. Reconnecting...');
+            if (!this.peer.destroyed) this.peer.reconnect();
         });
     }
 
