@@ -1,16 +1,3 @@
-// Konfiguration für Internet-Verbindungen (STUN Server helfen durch Firewalls)
-const PEER_CONFIG = {
-    config: {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
-        ]
-    }
-};
-
 class VaultP2P {
     constructor() {
         this.peer = null;
@@ -55,7 +42,7 @@ class VaultP2P {
         
         return new Promise((resolve, reject) => {
             // Wir lassen PeerJS die ID generieren (sicherer & keine Kollisionen)
-            this.peer = new Peer(PEER_CONFIG);
+            this.peer = new Peer();
             
             this.peer.on('open', (id) => {
                 this.peer.on('connection', (c) => this.handleConnection(c));
@@ -71,15 +58,20 @@ class VaultP2P {
     }
 
     async initGuest(roomId, keyString, deviceType = 'desktop') {
+        console.log(`GUEST: Initializing connection to room ${roomId}`);
         this.isHost = false;
         this.myDeviceType = deviceType;
         this.targetRoomId = roomId;
         this.sharedKey = await this.importKey(keyString);
         this.startHeartbeat();
-        this.peer = new Peer(PEER_CONFIG);
+        this.peer = new Peer();
         
-        this.peer.on('open', () => {
-            const c = this.peer.connect(roomId);
+        this.peer.on('open', (id) => {
+            console.log(`GUEST: PeerJS connection to signaling server is open. My ID is ${id}.`);
+            console.log(`GUEST: Attempting to connect to host: ${roomId}`);
+            
+            // Explizit reliable setzen für stabilere Dateiübertragung
+            const c = this.peer.connect(roomId, { reliable: true });
             this.handleConnection(c);
         });
         
@@ -107,6 +99,12 @@ class VaultP2P {
             this.callbacks.onConnect(this.connections.length);
         });
         
+        // WICHTIG: Fehler bei der Verbindung abfangen (z.B. Timeout, Firewall)
+        c.on('error', (err) => {
+            console.error('Connection Error:', err);
+            this.cleanupConnection(c);
+        });
+
         c.on('data', (data) => this.handleData(data, c));
         
         c.on('close', () => {
@@ -123,6 +121,17 @@ class VaultP2P {
                 this.reconnect();
             }
         });
+    }
+
+    cleanupConnection(c) {
+        this.connections = this.connections.filter(conn => conn !== c);
+        if (c.peerId) {
+            this.peers = this.peers.filter(p => p.id !== c.peerId);
+        }
+        if (this.isHost) this.broadcastPeerList();
+        
+        // Schließen erzwingen, falls noch offen
+        try { c.close(); } catch(e) {}
     }
 
     broadcastPeerList() {

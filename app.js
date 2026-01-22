@@ -192,6 +192,9 @@ function setupP2PEvents() {
         } else if (err.type === 'room-full') {
             modalTitle.innerText = 'ACCESS DENIED';
             modalText.innerText = 'The room has reached maximum capacity. Connection rejected.';
+        } else if (err.type === 'connection-timed-out') {
+            modalTitle.innerText = 'CONNECTION FAILED';
+            modalText.innerText = 'Could not establish a direct link. This can be caused by a restrictive firewall on one or both ends.';
         } else {
             modalTitle.innerText = 'CONNECTION ERROR';
             modalText.innerText = `An anomaly occurred: ${err.type}`;
@@ -283,6 +286,13 @@ async function initializeGuest(id) {
     linkInput.value = window.location.href;
     statusEl.innerText = 'CONNECTING...';
     updateQRCode(window.location.href);
+
+    // Timeout, falls die Verbindung ewig braucht
+    setTimeout(() => {
+        if (statusEl.innerText === 'CONNECTING...') {
+            p2p.callbacks.onError({ type: 'connection-timed-out' });
+        }
+    }, 15000); // 15 Sekunden
 }
 
 function setupQRCode() {
