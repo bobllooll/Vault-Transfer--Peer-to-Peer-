@@ -123,6 +123,11 @@ async function init() {
         }
     });
 
+    // WICHTIG: Beim Schließen des Tabs sofort Verbindung kappen
+    window.addEventListener('beforeunload', () => {
+        if (p2p) p2p.destroy();
+    });
+
     setupP2PEvents();
 }
 
@@ -265,8 +270,15 @@ async function initializeHost() {
     
     statusEl.innerText = 'INITIALIZING...';
     const deviceType = window.innerWidth <= 768 ? 'mobile' : 'desktop';
-    const { roomId: id, keyString } = await p2p.initHost(maxPeers, deviceType);
+    
+    // STICKY ID: Versuche alte ID wiederherzustellen (gegen Reload-Tod)
+    const savedId = sessionStorage.getItem('vault-host-id');
+    
+    const { roomId: id, keyString } = await p2p.initHost(maxPeers, deviceType, savedId);
     roomId = id;
+    
+    // ID für Reloads speichern
+    sessionStorage.setItem('vault-host-id', roomId);
     
     const fullLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}#${keyString}`;
     linkInput.value = fullLink;
@@ -398,9 +410,10 @@ function setupShareButton() {
 
 async function createNewRoom() {
     // Cleanup Old Connection
-    p2p.destroy();
-    p2p = new VaultP2P(); // Reset instance
-    setupP2PEvents(); // Re-bind all events
+    if (p2p) p2p.destroy();
+    
+    // FIX: Sticky ID löschen, sonst bekommen wir nach dem Reload wieder denselben Raum!
+    sessionStorage.removeItem('vault-host-id');
     
     resetUI();
     // Reload page to ensure clean state (simplest way for now)

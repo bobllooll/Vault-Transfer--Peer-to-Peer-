@@ -69,7 +69,7 @@ class VaultP2P {
         this.callbacks[event] = fn;
     }
 
-    async initHost(maxPeers = Infinity, deviceType = 'desktop') {
+    async initHost(maxPeers = Infinity, deviceType = 'desktop', preferredId = null) {
         if (this.peer) this.destroy(); // Sauberen Start erzwingen
 
         this.isHost = true;
@@ -80,33 +80,46 @@ class VaultP2P {
         this.startHeartbeat();
         
         return new Promise((resolve, reject) => {
-            // Wir lassen PeerJS die ID generieren (sicherer & keine Kollisionen)
-            this.peer = new Peer(PEER_CONFIG);
-            
-            this.peer.on('open', (id) => {
-                this.peer.on('connection', (c) => this.handleConnection(c));
-                this.peers = [{ id: id, device: this.myDeviceType }]; // Host zur Liste hinzufügen
-                resolve({ roomId: id, keyString });
-            });
+            // Rekursive Funktion für ID-Recovery Strategie
+            const initPeer = (idToTry) => {
+                // Versuche bevorzugte ID (für Reload-Resistenz) oder generiere neu
+                const peer = idToTry ? new Peer(idToTry, PEER_CONFIG) : new Peer(PEER_CONFIG);
+                
+                peer.on('open', (id) => {
+                    this.peer = peer; // Success!
+                    this.peer.on('connection', (c) => this.handleConnection(c));
+                    this.peers = [{ id: id, device: this.myDeviceType }];
+                    
+                    // WICHTIG: Wenn Verbindung zum Server abreißt (z.B. Standby), sofort neu verbinden!
+                    this.peer.on('disconnected', () => {
+                        console.log('HOST: Lost connection to signaling server. Reconnecting...');
+                        this.reconnectSignaling();
+                    });
 
-            this.peer.on('error', (err) => {
-                console.error('PeerJS Error (Host):', err);
-                this.callbacks.onError(err);
-            });
+                    // Aktiver Heartbeat für den Signaling-Server
+                    this.signalingKeepAlive = setInterval(() => {
+                        if (this.peer && !this.peer.destroyed && this.peer.disconnected) {
+                            console.warn('HOST: Detected silent signaling disconnect. Forcing reconnect.');
+                            this.reconnectSignaling();
+                        }
+                    }, 5000);
 
-            // WICHTIG: Wenn Verbindung zum Server abreißt (z.B. Standby), sofort neu verbinden!
-            this.peer.on('disconnected', () => {
-                console.log('HOST: Lost connection to signaling server. Reconnecting...');
-                this.reconnectSignaling();
-            });
+                    resolve({ roomId: id, keyString });
+                });
 
-            // Aktiver Heartbeat für den Signaling-Server (gegen "Silent Drops")
-            this.signalingKeepAlive = setInterval(() => {
-                if (this.peer && !this.peer.destroyed && this.peer.disconnected) {
-                    console.warn('HOST: Detected silent signaling disconnect. Forcing reconnect.');
-                    this.reconnectSignaling();
-                }
-            }, 5000);
+                peer.on('error', (err) => {
+                    if (err.type === 'unavailable-id' && idToTry) {
+                        console.warn("Host ID collision/taken. Falling back to random ID.");
+                        peer.destroy();
+                        initPeer(null); // Retry mit zufälliger ID
+                    } else {
+                        console.error('PeerJS Error (Host):', err);
+                        this.callbacks.onError(err);
+                    }
+                });
+            };
+
+            initPeer(preferredId);
         });
     }
 
