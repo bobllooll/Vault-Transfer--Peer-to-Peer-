@@ -147,6 +147,16 @@ main {
     box-shadow: 0 0 30px var(--accent-dim);
 }
 
+.usp-text {
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 1rem;
+    max-width: 400px;
+    line-height: 1.5;
+    pointer-events: none;
+}
+
 .transfer-info {
     width: 90%;
     max-width: 400px;
@@ -573,6 +583,66 @@ footer {
     cursor: pointer;
     border-radius: 4px;
 }
+
+/* --- SUCCESS OVERLAY --- */
+#success-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7);
+    z-index: 5000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(5px);
+}
+
+.checkmark-wrapper {
+    text-align: center;
+}
+
+.checkmark {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    display: block;
+    stroke-width: 2;
+    stroke: var(--accent-color);
+    stroke-miterlimit: 10;
+    margin: 0 auto 20px;
+    box-shadow: inset 0px 0px 0px var(--accent-color);
+    animation: fill .4s ease-in-out .4s forwards, scale .3s ease-in-out .9s both;
+}
+
+.checkmark__circle {
+    stroke-dasharray: 166;
+    stroke-dashoffset: 166;
+    stroke-width: 2;
+    stroke-miterlimit: 10;
+    stroke: var(--accent-color);
+    fill: none;
+    animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.checkmark__check {
+    transform-origin: 50% 50%;
+    stroke-dasharray: 48;
+    stroke-dashoffset: 48;
+    animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+}
+
+.success-text {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--accent-color);
+    letter-spacing: 2px;
+    opacity: 0;
+    animation: fadeIn 0.5s ease-out 1s forwards;
+    text-shadow: 0 0 20px var(--accent-dim);
+}
+
+@keyframes stroke { 100% { stroke-dashoffset: 0; } }
+@keyframes scale { 0%, 100% { transform: none; } 50% { transform: scale3d(1.1, 1.1, 1); } }
+@keyframes fill { 100% { box-shadow: inset 0px 0px 0px 50px rgba(0, 229, 255, 0.1); } }
 
 /* --- MOBILE RESPONSIVE --- */
 @media (max-width: 600px) {

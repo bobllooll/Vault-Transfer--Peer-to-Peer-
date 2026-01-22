@@ -9,6 +9,7 @@ class VaultVisuals {
         this.nodes = null;
         this.lines = null;
         this.glow = null;
+        this.scanRing = null; // Neuer Radar-Ring
         this.icons = this.createIcons();
         this.state = {
             hovering: false,
@@ -36,6 +37,7 @@ class VaultVisuals {
         this.container.appendChild(this.renderer.domElement);
 
         this.createNetworkVisuals();
+        this.createScanEffect(); // Radar initialisieren
         this.animate();
         
         // Initial topology update is handled by app.js via p2p events now
@@ -180,6 +182,20 @@ class VaultVisuals {
         this.scene.add(this.particles);
     }
 
+    createScanEffect() {
+        // Ein Ring, der sich ausdehnt
+        const geometry = new THREE.RingGeometry(14, 15, 64);
+        const material = new THREE.MeshBasicMaterial({ 
+            color: this.ACCENT_COLOR, 
+            transparent: true, 
+            opacity: 0.0,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending
+        });
+        this.scanRing = new THREE.Mesh(geometry, material);
+        this.scene.add(this.scanRing);
+    }
+
     updateTopology(peers) {
         if (!this.nodes) return; 
         
@@ -311,6 +327,22 @@ class VaultVisuals {
         if (this.lines) {
             if (this.particles) {
                 this.lines.material.opacity = this.particles.material.uniforms.globalOpacity.value * 0.1;
+            }
+        }
+
+        // --- RADAR ANIMATION (Wenn wir alleine sind) ---
+        if (this.scanRing) {
+            // Prüfen ob wir alleine sind (1 Node)
+            const isWaiting = this.nodes && this.nodes.children.length === 1;
+            
+            if (isWaiting) {
+                // Pulsieren: Skalierung von 1.0 bis 3.0
+                const pulse = (this.uniformTime * 0.8) % 1; // 0 bis 1 Loop
+                const scale = 1.0 + pulse * 2.0;
+                this.scanRing.scale.set(scale, scale, 1);
+                this.scanRing.material.opacity = (1.0 - pulse) * 0.5; // Ausblenden am Ende
+            } else {
+                this.scanRing.material.opacity = 0;
             }
         }
 

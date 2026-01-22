@@ -1,3 +1,16 @@
+// Konfiguration für Internet-Verbindungen (STUN Server helfen durch Firewalls)
+const PEER_CONFIG = {
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+        ]
+    }
+};
+
 class VaultP2P {
     constructor() {
         this.peer = null;
@@ -42,7 +55,7 @@ class VaultP2P {
         
         return new Promise((resolve, reject) => {
             // Wir lassen PeerJS die ID generieren (sicherer & keine Kollisionen)
-            this.peer = new Peer();
+            this.peer = new Peer(PEER_CONFIG);
             
             this.peer.on('open', (id) => {
                 this.peer.on('connection', (c) => this.handleConnection(c));
@@ -63,7 +76,7 @@ class VaultP2P {
         this.targetRoomId = roomId;
         this.sharedKey = await this.importKey(keyString);
         this.startHeartbeat();
-        this.peer = new Peer();
+        this.peer = new Peer(PEER_CONFIG);
         
         this.peer.on('open', () => {
             const c = this.peer.connect(roomId);

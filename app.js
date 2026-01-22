@@ -3,7 +3,7 @@ let roomId;
 let p2p; // Instance of VaultP2P
 let visuals; // Instance of VaultVisuals
 
-let pendingFile = null; // Datei, die auf Verbindung wartet
+let pendingFiles = []; // Warteschlange für Dateien
 let receivedFilesCache = []; // Speicher für alle empfangenen Dateien
 
 // --- UI ELEMENTS ---
@@ -50,7 +50,7 @@ async function init() {
 
     // Check for Shared File (from Mobile Share Menu)
     if (urlParams.get('shared') === 'true') {
-        handleSharedFile();
+        await handleSharedFile(); // Warten, damit pendingFiles gefüllt ist
         // URL bereinigen
         window.history.replaceState(null, null, '/');
     }
@@ -126,16 +126,21 @@ async function init() {
 
 function setupP2PEvents() {
     // --- P2P EVENTS (Re-usable for new rooms) ---
-    p2p.on('onConnect', () => {
+    p2p.on('onConnect', async () => {
         statusEl.innerText = `CONNECTED`;
         statusEl.style.color = '#00e5ff';
         dropLabel.innerText = 'DROP FILE TO INITIATE TRANSFER';
         visuals.state.connected = true;
+        showConnectionSuccess(); // Animation auslösen
         // Falls wir Host sind, haben wir schon eine Peer-Liste
         if (p2p.peers && p2p.peers.length > 0) visuals.updateTopology(p2p.peers);
-        if (pendingFile) {
-            sendFile(pendingFile);
-            pendingFile = null;
+        
+        // Warteschlange abarbeiten
+        if (pendingFiles.length > 0) {
+            showToast(`SENDING ${pendingFiles.length} QUEUED FILES...`);
+            const queue = [...pendingFiles];
+            pendingFiles = []; // Queue leeren
+            for (const file of queue) await sendFile(file);
         }
         disconnectModal.style.display = 'none'; // Hide modal on reconnect
     });
@@ -218,8 +223,12 @@ function setupP2PEvents() {
 }
 
 async function initializeHost() {
-    // Ask for limit
-    const limit = await getUserLimit();
+    // Ask for limit (Überspringen, wenn wir direkt aus der Galerie teilen)
+    let limit = 5; // Standardwert für schnellen Start
+    if (pendingFiles.length === 0) {
+        limit = await getUserLimit();
+    }
+
     let maxPeers = limit - 1;
     if (maxPeers < 1) maxPeers = 1;
     
@@ -320,7 +329,7 @@ function setupShareButton() {
             try {
                 await navigator.share({
                     title: 'Vault Transfer',
-                    text: 'Join my secure Event Horizon to transfer files.',
+                    text: 'Tap to join Vault Room (AirDrop / Nearby Share):',
                     url: linkInput.value
                 });
             } catch (err) {
@@ -359,6 +368,28 @@ function handleFileReceived(blob, name) {
 }
 
 async function sendFile(file) {
+    // Schutz gegen Ordner (werden oft als 0 Byte erkannt) oder leere Dateien
+    if (file.size === 0) {
+        showToast('EMPTY FILE OR FOLDER DETECTED. PLEASE ZIP FOLDERS.');
+        return;
+    }
+
+    // NEU: Warten, bis jemand da ist (Queue)
+    if (p2p.connections.length === 0) {
+        pendingFiles.push(file);
+        
+        visuals.state.transferring = true;
+        showTransferUI(file.name);
+        updateParticleColor(getFileColor(file.name));
+        
+        // UI Feedback: Wir warten
+        const statusText = pendingFiles.length > 1 ? `${pendingFiles.length} FILES QUEUED` : file.name;
+        document.getElementById('file-name').innerText = `${statusText} (Waiting for Peer...)`;
+        dropLabel.innerText = "WAITING FOR PEER...";
+        dropLabel.style.opacity = 1; // Label sichtbar machen (wurde von showTransferUI versteckt)
+        return;
+    }
+
     visuals.state.transferring = true;
     showTransferUI(file.name);
     updateParticleColor(getFileColor(file.name));
@@ -383,6 +414,24 @@ function showToast(message, duration = 3000) {
         toast.style.opacity = '0';
         setTimeout(() => toast.remove(), 300);
     }, duration);
+}
+
+function showConnectionSuccess() {
+    const overlay = document.getElementById('success-overlay');
+    if (!overlay) return;
+    
+    overlay.style.display = 'flex';
+    
+    // Nach 2.5 Sekunden ausblenden
+    setTimeout(() => {
+        overlay.style.transition = 'opacity 0.5s ease';
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            overlay.style.opacity = '1';
+            overlay.style.transition = '';
+        }, 500);
+    }, 2500);
 }
 
 // --- UI HELPERS ---
@@ -611,12 +660,14 @@ async function handleSharedFile() {
             const file = new File([blob], name, { type: blob.type });
             
             // Datei vormerken
-            pendingFile = file;
+            pendingFiles.push(file);
             
             // UI Update (Warten auf Peer)
             showTransferUI(file.name);
             updateParticleColor(getFileColor(file.name));
             dropLabel.innerText = "WAITING FOR PEER...";
+            dropLabel.style.opacity = 1;
+            document.getElementById('file-name').innerText = `${file.name} (Waiting for Peer...)`;
             
             // Cache bereinigen
             await cache.delete('shared-file');
