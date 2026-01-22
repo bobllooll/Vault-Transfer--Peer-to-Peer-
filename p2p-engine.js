@@ -5,6 +5,10 @@ const PEER_CONFIG = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.global.stun.twilio.com:3478' },
             
             // TURN Server (Relay): Der "Dietrich" für Firewalls
             // Leitet Traffic über Port 80/443 um, wenn direktes P2P blockiert ist
@@ -24,7 +28,7 @@ const PEER_CONFIG = {
                 credential: "openrelayproject"
             }
         ],
-        iceCandidatePoolSize: 4 // Reduziert, um Netzwerk-Überlastung (Timeout) zu vermeiden
+        iceCandidatePoolSize: 2 // Stark reduziert für Mobile-Netzwerke (verhindert Stau)
     }
 };
 
@@ -107,9 +111,8 @@ class VaultP2P {
             console.log(`GUEST: PeerJS connection to signaling server is open. My ID is ${id}.`);
             console.log(`GUEST: Attempting to connect to host: ${roomId}`);
             
-            // Standard-Verbindung nutzen (oft kompatibler mit Mobile-Netzwerken)
-            const c = this.peer.connect(roomId);
-            this.handleConnection(c);
+            // Start connection strategy (UDP first, then TCP fallback)
+            this.connectToHost(roomId);
         });
         
         this.peer.on('error', (err) => {
@@ -122,6 +125,50 @@ class VaultP2P {
             console.log('GUEST: Lost connection to signaling server. Reconnecting...');
             if (!this.peer.destroyed) this.peer.reconnect();
         });
+    }
+
+    connectToHost(roomId, forceRelay = false) {
+        console.log(`GUEST: Connecting to ${roomId} (Relay Forced: ${forceRelay})`);
+        
+        const options = {
+            reliable: true,
+            serialization: 'binary'
+        };
+
+        if (forceRelay) {
+            // STRATEGIE: Forced TCP/TLS Fallback (Port 443)
+            // Wir zwingen WebRTC, alles über den TURN-Server zu tunneln.
+            // Das sieht für die Firewall wie normaler HTTPS-Traffic aus.
+            options.config = {
+                ...PEER_CONFIG.config,
+                iceTransportPolicy: 'relay', 
+                iceCandidatePoolSize: 0 // Keine Zeit mit lokalen IPs verschwenden
+            };
+        }
+
+        // STRATEGIE: MTU-Clamping Simulation
+        // Wir manipulieren das SDP, um die Bandbreite beim Start zu begrenzen.
+        // Das verhindert, dass riesige Pakete von strikten Mobile-Firewalls verworfen werden.
+        options.sdpTransform = (sdp) => {
+            if (sdp.includes('b=AS:')) return sdp.replace(/b=AS:([0-9]+)/g, 'b=AS:500');
+            return sdp.replace(/a=mid:data\r\n/g, 'a=mid:data\r\nb=AS:500\r\n');
+        };
+
+        const c = this.peer.connect(roomId, options);
+        this.handleConnection(c);
+
+        // STRATEGIE: Aggressive ICE-Restart Heuristik (Watchdog)
+        // Wir warten nicht 45s. Wenn nach 6s nichts passiert, ist UDP wahrscheinlich blockiert.
+        setTimeout(() => {
+            if (!c.open && this.connections.length === 1 && this.connections[0] === c) {
+                if (!forceRelay) {
+                    console.warn("Watchdog: UDP stuck. Triggering TCP/TLS Fallback.");
+                    this.cleanupConnection(c);
+                    this.callbacks.onError({ type: 'switching-protocols' }); // UI Info
+                    this.connectToHost(roomId, true); // Retry mit Relay
+                }
+            }
+        }, 6000);
     }
 
     handleConnection(c) {

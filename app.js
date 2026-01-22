@@ -210,8 +210,14 @@ function setupP2PEvents() {
             modalTitle.innerText = 'ACCESS DENIED';
             modalText.innerText = 'The room has reached maximum capacity. Connection rejected.';
         } else if (err.type === 'connection-timed-out') {
-            modalTitle.innerText = 'CONNECTION FAILED';
-            modalText.innerText = 'Carrier Firewall detected (Symmetric NAT).\n\nWORKAROUND:\n1. Enable "Hotspot" on your phone.\n2. Connect laptop to that Hotspot.\n3. Reload page.';
+            modalTitle.innerText = 'CONNECTION TIMED OUT';
+            modalText.innerText = 'The firewall negotiation took too long.\n\nSUGGESTION:\n1. Click "CREATE NEW ROOM" to retry.\n2. If it fails again, try switching networks (WiFi <-> Mobile).';
+        } else if (err.type === 'switching-protocols') {
+            // Kein Fehler-Modal, nur Status-Update
+            statusEl.innerText = 'SWITCHING TO SECURE RELAY...';
+            statusEl.style.color = '#ffaa00';
+            showToast('Firewall detected. Forcing TCP/TLS Tunnel...');
+            return; 
         } else {
             modalTitle.innerText = 'CONNECTION ERROR';
             modalText.innerText = `An anomaly occurred: ${err.type}`;
@@ -311,11 +317,20 @@ async function initializeGuest(id) {
     updateQRCode(window.location.href);
 
     // Timeout, falls die Verbindung ewig braucht
+    // Stufe 1: Info an Nutzer, dass es noch arbeitet
     setTimeout(() => {
         if (statusEl.innerText === 'CONNECTING...') {
+            statusEl.innerText = 'NEGOTIATING FIREWALL...';
+        }
+    }, 8000);
+
+    // Stufe 2: Erst nach 45 Sekunden abbrechen (Relay braucht Zeit)
+    setTimeout(() => {
+        const s = statusEl.innerText;
+        if (s === 'CONNECTING...' || s === 'NEGOTIATING FIREWALL...') {
             p2p.callbacks.onError({ type: 'connection-timed-out' });
         }
-    }, 15000); // 15 Sekunden
+    }, 45000); // 45 Sekunden
 }
 
 function setupQRCode() {
