@@ -194,7 +194,7 @@ function setupP2PEvents() {
             modalText.innerText = 'The room has reached maximum capacity. Connection rejected.';
         } else if (err.type === 'connection-timed-out') {
             modalTitle.innerText = 'CONNECTION FAILED';
-            modalText.innerText = 'Could not establish a direct link. This can be caused by a restrictive firewall on one or both ends.';
+            modalText.innerText = 'Direct link blocked by firewall.\n\nTRY THIS:\n1. Disable WiFi and use Mobile Data (4G/5G).\n2. Or try a different network.';
         } else {
             modalTitle.innerText = 'CONNECTION ERROR';
             modalText.innerText = `An anomaly occurred: ${err.type}`;
