@@ -1,14 +1,11 @@
 // Konfiguration für bessere Verbindungen (STUN hilft durch Firewalls)
 const PEER_CONFIG = {
-    debug: 2, // Zeigt Warnungen in der Konsole an
+    debug: 3, // MAXIMUM LOGGING: Zeigt alle PeerJS Interna an
     config: {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun.nextcloud.com:443' }, // WICHTIG: Port 443 STUN für strikte Firewalls
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
             { urls: 'stun:stun.global.stun.twilio.com:3478' },
             
             // TURN Server (Relay): Der "Dietrich" für Firewalls
@@ -173,19 +170,12 @@ class VaultP2P {
             };
         }
 
-        // STRATEGIE: MTU-Clamping Simulation
-        // Wir manipulieren das SDP, um die Bandbreite beim Start zu begrenzen.
-        // Das verhindert, dass riesige Pakete von strikten Mobile-Firewalls verworfen werden.
-        options.sdpTransform = (sdp) => {
-            if (sdp.includes('b=AS:')) return sdp.replace(/b=AS:([0-9]+)/g, 'b=AS:500');
-            return sdp.replace(/a=mid:data\r\n/g, 'a=mid:data\r\nb=AS:500\r\n');
-        };
-
         const c = this.peer.connect(roomId, options);
+        this.attachDebugLogger(c); // DIAGNOSE STARTEN
         this.handleConnection(c);
 
         // STRATEGIE: Aggressive ICE-Restart Heuristik (Watchdog)
-        // Wir warten nicht 45s. Wenn nach 4s nichts passiert, ist UDP wahrscheinlich blockiert.
+        // Wir warten nicht 45s. Wenn nach 8s nichts passiert, ist UDP wahrscheinlich blockiert.
         setTimeout(() => {
             if (!c.open && this.connections.length === 1 && this.connections[0] === c) {
                 if (!forceRelay) {
@@ -195,7 +185,7 @@ class VaultP2P {
                     this.connectToHost(roomId, true); // Retry mit Relay
                 }
             }
-        }, 4000); // Reduziert auf 4s für schnelleren Fallback
+        }, 8000); // Erhöht auf 8s für langsame Mobile-Netze
     }
 
     handleConnection(c) {
@@ -209,6 +199,7 @@ class VaultP2P {
         }
 
         this.connections.push(c);
+        this.attachDebugLogger(c); // DIAGNOSE STARTEN
 
         c.on('open', () => {
             // Handshake: Sende eigene Infos
@@ -264,6 +255,38 @@ class VaultP2P {
                 if (type !== 'UNKNOWN') this.callbacks.onConnectionType(type);
             } catch (e) { console.warn("Stats error", e); }
         }, 1000);
+    }
+
+    // --- DIAGNOSE TOOL ---
+    attachDebugLogger(c) {
+        // Wir müssen kurz warten, bis PeerJS das interne WebRTC-Objekt erstellt hat
+        const checkInterval = setInterval(() => {
+            if (!c.peerConnection) return;
+            clearInterval(checkInterval);
+
+            console.log(`%c[DIAGNOSTIC] Hooked into connection ${c.peer}`, 'background: #333; color: #ffff00; font-weight: bold');
+
+            // 1. ICE Candidates (Welche Wege finden wir?)
+            c.peerConnection.addEventListener('icecandidate', event => {
+                if (event.candidate) {
+                    const type = event.candidate.type; // host, srflx (stun), relay (turn)
+                    const color = type === 'relay' ? '#ff00ff' : (type === 'srflx' ? '#00ffff' : '#aaaaaa');
+                    console.log(`%c[ICE CANDIDATE] Found ${type.toUpperCase()} (${event.candidate.protocol}): ${event.candidate.candidate}`, `color: ${color}`);
+                } else {
+                    console.log('%c[ICE CANDIDATE] Gathering Finished (End of List)', 'color: #00ff00');
+                }
+            });
+
+            // 2. Connection State (Wo hängt es?)
+            c.peerConnection.addEventListener('iceconnectionstatechange', () => {
+                console.log(`%c[ICE STATE] Changed to: ${c.peerConnection.iceConnectionState.toUpperCase()}`, 'background: #000; color: #fff; border: 1px solid #fff');
+            });
+
+            // 3. Gathering State
+            c.peerConnection.addEventListener('icegatheringstatechange', () => {
+                console.log(`%c[ICE GATHERING] ${c.peerConnection.iceGatheringState.toUpperCase()}`, 'color: #aaa');
+            });
+        }, 100);
     }
 
     cleanupConnection(c) {

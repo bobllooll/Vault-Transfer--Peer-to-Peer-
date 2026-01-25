@@ -39,7 +39,7 @@ function setupUI() {
 
 // --- INITIALIZATION ---
 async function init() {
-    console.log("--- VAULT TRANSFER v4.5 INIT ---"); // Prüfe in der Konsole, ob dies erscheint
+    console.log(`--- ${CACHE_NAME} INIT ---`); // Prüfe in der Konsole, ob dies erscheint
     setupUI();
 
     // Initialize Engines
