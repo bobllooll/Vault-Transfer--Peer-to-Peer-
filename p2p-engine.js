@@ -342,7 +342,9 @@ class VaultP2P {
     }
 
     reconnectSignaling() {
-        if (this.peer && !this.peer.destroyed) this.peer.reconnect();
+        if (this.peer && !this.peer.destroyed && this.peer.disconnected) {
+            this.peer.reconnect();
+        }
     }
 
     reconnect() {

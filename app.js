@@ -209,8 +209,10 @@ function setupP2PEvents() {
 
     p2p.on('onError', (err) => {
         // Fix: Ignoriere Netzwerk-Fehler beim Tab-Wechsel (Mobile) und verbinde neu
-        if (err.type === 'network' || err.type === 'disconnected') {
-            if (p2p.peer && !p2p.peer.destroyed) {
+        if (err.type === 'network' || err.type === 'disconnected' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
+            // WICHTIG: Nur reconnecten, wenn PeerJS auch wirklich "disconnected" ist.
+            // Sonst wirft es den Fehler: "Cannot reconnect because it is not disconnected!"
+            if (p2p.peer && !p2p.peer.destroyed && p2p.peer.disconnected) {
                 p2p.peer.reconnect();
             }
             showToast('RECONNECTING TO SERVER...');
