@@ -15,12 +15,14 @@ const PEER_CONFIG = {
                 credential: "openrelayproject"
             },
             {
-                urls: "turn:openrelay.metered.ca:443",
+                urls: "turn:openrelay.metered.ca:443", // Standard UDP/TCP
                 username: "openrelayproject",
                 credential: "openrelayproject"
             },
             {
-                urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                // INNOVATION: TURNS (Secure TURN). Wickelt Traffic in echtes TLS/SSL.
+                // Umgeht Deep Packet Inspection (DPI) von Mobilfunkanbietern.
+                urls: "turns:openrelay.metered.ca:443?transport=tcp",
                 username: "openrelayproject",
                 credential: "openrelayproject"
             }
@@ -166,7 +168,20 @@ class VaultP2P {
                 // Das zwingt den Browser, nicht nach anderen Wegen zu suchen.
                 iceServers: [
                     {
+                        // TÜR 1: Stealth-Mode (TLS/SSL) - Sieht aus wie HTTPS
+                        urls: "turns:openrelay.metered.ca:443?transport=tcp",
+                        username: "openrelayproject",
+                        credential: "openrelayproject"
+                    },
+                    {
+                        // TÜR 2: Standard TCP auf Port 443 - Falls TLS Handshake scheitert
                         urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                        username: "openrelayproject",
+                        credential: "openrelayproject"
+                    },
+                    {
+                        // TÜR 3: Standard TCP auf Port 80 - Oft weniger streng gefiltert
+                        urls: "turn:openrelay.metered.ca:80?transport=tcp",
                         username: "openrelayproject",
                         credential: "openrelayproject"
                     }
@@ -180,11 +195,11 @@ class VaultP2P {
         this.handleConnection(c);
 
         // STRATEGIE: Aggressive ICE-Restart Heuristik (Watchdog)
-        // Wir warten 8 Sekunden. Das ist der Sweetspot für Mobile.
+        // Wir warten 20 Sekunden. Der Browser muss jetzt 3 verschiedene TCP-Wege testen.
         setTimeout(() => {
             if (!c.open && this.connections.length === 1 && this.connections[0] === c) {
                 if (!forceRelay) {
-                    console.warn("Watchdog: Connection stuck. Switching to Secure Relay.");
+                    console.warn("Watchdog: Connection stuck. Switching to MULTI-PROTOCOL RELAY.");
                     
                     // 1. UI informieren (Spinner zeigen)
                     this.callbacks.onError({ type: 'switching-protocols' });
@@ -200,7 +215,7 @@ class VaultP2P {
                     this.callbacks.onError({ type: 'connection-timed-out' });
                 }
             }
-        }, 8000); // 8s: Genug Zeit für LTE, aber schnell genug für Fallback
+        }, 20000); // 20s: Genug Zeit für alle 3 TCP-Versuche
     }
 
     handleConnection(c) {
