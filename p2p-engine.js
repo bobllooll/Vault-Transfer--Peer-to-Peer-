@@ -5,30 +5,19 @@ const PEER_CONFIG = {
     config: {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-
-            // TURN Server (Relay) - ALLE Protokolle sofort anbieten
-            // Der Browser sucht sich selbst den besten Weg (Race-Condition)
-            {
-                urls: "turn:openrelay.metered.ca:80", // Standard HTTP Port
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            },
-            {
-                urls: "turn:openrelay.metered.ca:443", // Standard HTTPS Port
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            },
+            // Reduzierte Liste um SDP-Größe klein zu halten (Mobile MTU Fix)
             {
                 urls: "turns:openrelay.metered.ca:443?transport=tcp",
                 username: "openrelayproject",
                 credential: "openrelayproject"
+            },
+            {
+                urls: "turn:openrelay.metered.ca:80?transport=tcp", // Fallback Port 80 TCP
+                username: "openrelayproject",
+                credential: "openrelayproject"
             }
         ],
-        iceCandidatePoolSize: 10 // Mehr Kandidaten vorbereiten
+        iceCandidatePoolSize: 2 // Reduziert für Stabilität
     }
 };
 
@@ -154,7 +143,7 @@ class VaultP2P {
     }
 
     connectToHost(roomId) {
-        console.log(`GUEST: Connecting to ${roomId} with FULL CONFIG`);
+        console.log(`GUEST: Connecting to ${roomId} with OPTIMIZED CONFIG`);
         
         const options = {
             reliable: true,

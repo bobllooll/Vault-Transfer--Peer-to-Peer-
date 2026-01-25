@@ -9,7 +9,7 @@ let currentConnectionType = ''; // Speichert den aktuellen Verbindungstyp
 let connectionRetries = 0; // Zähler für Verbindungsversuche
 
 // --- UI ELEMENTS ---
-let statusEl, linkInput, dropLabel, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer, limitModal, limitInput, confirmLimitBtn;
+let statusEl, linkInput, dropLabel, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, repairBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer, limitModal, limitInput, confirmLimitBtn;
 
 function setupUI() {
     statusEl = document.getElementById('connection-status');
@@ -23,6 +23,7 @@ function setupUI() {
     qrBtn = document.getElementById('qr-btn');
     qrPopup = document.getElementById('qr-popup');
     newRoomBtn = document.getElementById('new-room-btn');
+    repairBtn = document.getElementById('repair-btn');
     disconnectModal = document.getElementById('disconnect-modal');
     reconnectBtn = document.getElementById('reconnect-btn');
     gdprBanner = document.getElementById('gdpr-banner');
@@ -99,6 +100,13 @@ async function init() {
         disconnectModal.style.display = 'none';
         createNewRoom();
     });
+    
+    if (repairBtn) {
+        repairBtn.addEventListener('click', () => {
+            window.location.reload(); // Hard Reset ist oft am sichersten
+        });
+    }
+
     document.getElementById('gdpr-accept').addEventListener('click', () => {
         localStorage.setItem('vault-gdpr-consent', 'true');
         gdprBanner.style.display = 'none';
@@ -225,6 +233,8 @@ function setupP2PEvents() {
         } else if (err.type === 'connection-timed-out') {
             modalTitle.innerText = 'CONNECTION TIMED OUT';
             modalText.innerText = 'The firewall negotiation took too long.\n\nSUGGESTION:\n1. Click "CREATE NEW ROOM" to retry.\n2. If it fails again, try switching networks (WiFi <-> Mobile).';
+            // Zeige Repair Button
+            if (repairBtn) repairBtn.style.display = 'inline-block';
         } else {
             modalTitle.innerText = 'CONNECTION ERROR';
             modalText.innerText = `An anomaly occurred: ${err.type}`;
@@ -349,6 +359,8 @@ async function initializeGuest(id) {
         const s = statusEl.innerText;
         if (s.includes('CONNECTING') || s.includes('NEGOTIATING')) {
             p2p.callbacks.onError({ type: 'connection-timed-out' });
+            // Zeige Repair Button bei Timeout
+            if (repairBtn) repairBtn.style.display = 'inline-block';
         }
     }, 60000);
 }
