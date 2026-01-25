@@ -1,11 +1,11 @@
 // Konfiguration für bessere Verbindungen (STUN hilft durch Firewalls)
 const PEER_CONFIG = {
     debug: 2, // Optimiertes Logging
+    pingInterval: 5000, // Hält die Signaling-Verbindung auf Handys aktiv (Heartbeat)
     config: {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun.nextcloud.com:443' }, // WICHTIG: Port 443 STUN für strikte Firewalls
             
             // TURN Server (Relay): Der "Dietrich" für Firewalls
             // Leitet Traffic über Port 80/443 um, wenn direktes P2P blockiert ist
@@ -24,8 +24,7 @@ const PEER_CONFIG = {
                 username: "openrelayproject",
                 credential: "openrelayproject"
             }
-        ],
-        iceCandidatePoolSize: 2 // Optimiert für Mobile (weniger Datenverbrauch/Overhead)
+        ]
     }
 };
 
@@ -163,20 +162,16 @@ class VaultP2P {
             // Wir zwingen WebRTC, alles über den TURN-Server zu tunneln.
             // Das sieht für die Firewall wie normaler HTTPS-Traffic aus.
             options.config = {
+                // WICHTIG: Im Relay-Modus NUR den TCP-Server anbieten. Keine STUN-Server.
+                // Das zwingt den Browser, nicht nach anderen Wegen zu suchen.
                 iceServers: [
                     {
                         urls: "turn:openrelay.metered.ca:443?transport=tcp",
                         username: "openrelayproject",
                         credential: "openrelayproject"
-                    },
-                    {
-                        urls: "turn:openrelay.metered.ca:443", // Fallback UDP im Relay-Mode
-                        username: "openrelayproject",
-                        credential: "openrelayproject"
                     }
                 ],
-                iceTransportPolicy: 'relay', 
-                iceCandidatePoolSize: 0
+                iceTransportPolicy: 'relay'
             };
         }
 
@@ -185,11 +180,11 @@ class VaultP2P {
         this.handleConnection(c);
 
         // STRATEGIE: Aggressive ICE-Restart Heuristik (Watchdog)
-        // Wir warten nicht 45s. Wenn nach 12s nichts passiert, ist UDP wahrscheinlich blockiert.
+        // Wir warten 8 Sekunden. Das ist der Sweetspot für Mobile.
         setTimeout(() => {
             if (!c.open && this.connections.length === 1 && this.connections[0] === c) {
                 if (!forceRelay) {
-                    console.warn("Watchdog: UDP stuck. Triggering TCP/TLS Fallback.");
+                    console.warn("Watchdog: Connection stuck. Switching to Secure Relay.");
                     
                     // 1. UI informieren (Spinner zeigen)
                     this.callbacks.onError({ type: 'switching-protocols' });
@@ -205,7 +200,7 @@ class VaultP2P {
                     this.callbacks.onError({ type: 'connection-timed-out' });
                 }
             }
-        }, 12000); // Optimiert auf 12s: Lang genug für LTE, kurz genug für Geduld
+        }, 8000); // 8s: Genug Zeit für LTE, aber schnell genug für Fallback
     }
 
     handleConnection(c) {
