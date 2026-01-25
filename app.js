@@ -225,12 +225,6 @@ function setupP2PEvents() {
         } else if (err.type === 'connection-timed-out') {
             modalTitle.innerText = 'CONNECTION TIMED OUT';
             modalText.innerText = 'The firewall negotiation took too long.\n\nSUGGESTION:\n1. Click "CREATE NEW ROOM" to retry.\n2. If it fails again, try switching networks (WiFi <-> Mobile).';
-        } else if (err.type === 'switching-protocols') {
-            // Kein Fehler-Modal, nur Status-Update
-            statusEl.innerHTML = 'OPTIMIZING CONNECTION... <span class="spinner"></span>';
-            statusEl.style.color = '#ffaa00';
-            showToast('Switching to Secure Tunnel...');
-            return; 
         } else {
             modalTitle.innerText = 'CONNECTION ERROR';
             modalText.innerText = `An anomaly occurred: ${err.type}`;
@@ -346,17 +340,17 @@ async function initializeGuest(id) {
     // Stufe 1: Info an Nutzer, dass es noch arbeitet
     setTimeout(() => {
         if (statusEl.innerText === 'CONNECTING...') {
-            statusEl.innerHTML = 'ESTABLISHING LINK... <span class="spinner"></span>';
+            statusEl.innerHTML = 'NEGOTIATING... <span class="spinner"></span>';
         }
-    }, 2000); // Schon nach 2s Feedback geben
+    }, 3000);
 
-    // Stufe 2: Abbruch nach 30s (8s UDP + 22s TCP Versuch)
+    // Stufe 2: Abbruch nach 60s (Browser Zeit geben)
     setTimeout(() => {
         const s = statusEl.innerText;
-        if (s.includes('CONNECTING') || s.includes('ESTABLISHING') || s.includes('OPTIMIZING')) {
+        if (s.includes('CONNECTING') || s.includes('NEGOTIATING')) {
             p2p.callbacks.onError({ type: 'connection-timed-out' });
         }
-    }, 30000);
+    }, 60000);
 }
 
 function setupQRCode() {

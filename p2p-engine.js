@@ -6,27 +6,29 @@ const PEER_CONFIG = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            
-            // TURN Server (Relay): Der "Dietrich" für Firewalls
-            // Leitet Traffic über Port 80/443 um, wenn direktes P2P blockiert ist
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+
+            // TURN Server (Relay) - ALLE Protokolle sofort anbieten
+            // Der Browser sucht sich selbst den besten Weg (Race-Condition)
             {
-                urls: "turn:openrelay.metered.ca:80",
+                urls: "turn:openrelay.metered.ca:80", // Standard HTTP Port
                 username: "openrelayproject",
                 credential: "openrelayproject"
             },
             {
-                urls: "turn:openrelay.metered.ca:443", // Standard UDP/TCP
+                urls: "turn:openrelay.metered.ca:443", // Standard HTTPS Port
                 username: "openrelayproject",
                 credential: "openrelayproject"
             },
             {
-                // INNOVATION: TURNS (Secure TURN). Wickelt Traffic in echtes TLS/SSL.
-                // Umgeht Deep Packet Inspection (DPI) von Mobilfunkanbietern.
                 urls: "turns:openrelay.metered.ca:443?transport=tcp",
                 username: "openrelayproject",
                 credential: "openrelayproject"
             }
-        ]
+        ],
+        iceCandidatePoolSize: 10 // Mehr Kandidaten vorbereiten
     }
 };
 
@@ -35,7 +37,7 @@ class VaultP2P {
         this.peer = null;
         this.connections = [];
         this.sharedKey = null;
-        this.CHUNK_SIZE = 16 * 1024;
+        this.CHUNK_SIZE = 8 * 1024; // Reduziert auf 8KB für bessere Mobile-Kompatibilität (MTU)
         this.callbacks = {
             onConnect: () => {},
             onDisconnect: () => {},
@@ -151,71 +153,17 @@ class VaultP2P {
         });
     }
 
-    connectToHost(roomId, forceRelay = false) {
-        console.log(`GUEST: Connecting to ${roomId} (Relay Forced: ${forceRelay})`);
+    connectToHost(roomId) {
+        console.log(`GUEST: Connecting to ${roomId} with FULL CONFIG`);
         
         const options = {
             reliable: true,
             serialization: 'binary'
         };
 
-        if (forceRelay) {
-            // STRATEGIE: Forced TCP/TLS Fallback (Port 443)
-            // Wir zwingen WebRTC, alles über den TURN-Server zu tunneln.
-            // Das sieht für die Firewall wie normaler HTTPS-Traffic aus.
-            options.config = {
-                // WICHTIG: Im Relay-Modus NUR den TCP-Server anbieten. Keine STUN-Server.
-                // Das zwingt den Browser, nicht nach anderen Wegen zu suchen.
-                iceServers: [
-                    {
-                        // TÜR 1: Stealth-Mode (TLS/SSL) - Sieht aus wie HTTPS
-                        urls: "turns:openrelay.metered.ca:443?transport=tcp",
-                        username: "openrelayproject",
-                        credential: "openrelayproject"
-                    },
-                    {
-                        // TÜR 2: Standard TCP auf Port 443 - Falls TLS Handshake scheitert
-                        urls: "turn:openrelay.metered.ca:443?transport=tcp",
-                        username: "openrelayproject",
-                        credential: "openrelayproject"
-                    },
-                    {
-                        // TÜR 3: Standard TCP auf Port 80 - Oft weniger streng gefiltert
-                        urls: "turn:openrelay.metered.ca:80?transport=tcp",
-                        username: "openrelayproject",
-                        credential: "openrelayproject"
-                    }
-                ],
-                iceTransportPolicy: 'relay'
-            };
-        }
-
         const c = this.peer.connect(roomId, options);
         this.attachDebugLogger(c); // DIAGNOSE STARTEN
         this.handleConnection(c);
-
-        // STRATEGIE: Aggressive ICE-Restart Heuristik (Watchdog)
-        // Wir warten 20 Sekunden. Der Browser muss jetzt 3 verschiedene TCP-Wege testen.
-        setTimeout(() => {
-            if (!c.open && this.connections.length === 1 && this.connections[0] === c) {
-                if (!forceRelay) {
-                    console.warn("Watchdog: Connection stuck. Switching to MULTI-PROTOCOL RELAY.");
-                    
-                    // 1. UI informieren (Spinner zeigen)
-                    this.callbacks.onError({ type: 'switching-protocols' });
-                    
-                    // 2. WICHTIG: 'close' Event entfernen, damit kein "Disconnected" Modal aufpoppt
-                    c.removeAllListeners('close');
-                    this.cleanupConnection(c);
-                    
-                    this.connectToHost(roomId, true); // Retry mit Relay
-                } else {
-                    // Wenn selbst Relay scheitert -> Abbruch
-                    console.warn("Watchdog: Relay also stuck. Carrier blocking everything.");
-                    this.callbacks.onError({ type: 'connection-timed-out' });
-                }
-            }
-        }, 20000); // 20s: Genug Zeit für alle 3 TCP-Versuche
     }
 
     handleConnection(c) {
