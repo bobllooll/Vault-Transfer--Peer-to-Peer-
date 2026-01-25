@@ -4,12 +4,7 @@ const PEER_CONFIG = {
     pingInterval: 5000, // Hält die Signaling-Verbindung auf Handys aktiv (Heartbeat)
     config: {
         iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            {
-                urls: "turns:openrelay.metered.ca:443?transport=tcp",
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            }
+            { urls: 'stun:stun.l.google.com:19302' } // Nur STUN für IP-Discovery nötig
         ]
     }
 };
@@ -19,7 +14,7 @@ class VaultP2P {
         this.peer = null;
         this.connections = [];
         this.sharedKey = null;
-        this.CHUNK_SIZE = 16 * 1024; // Base64 braucht etwas mehr Platz
+        this.CHUNK_SIZE = 64 * 1024; // 64KB Chunks für High-Speed LAN
         this.callbacks = {
             onConnect: () => {},
             onDisconnect: () => {},
@@ -136,11 +131,11 @@ class VaultP2P {
     }
 
     connectToHost(roomId) {
-        console.log(`GUEST: Connecting to ${roomId} using TEXT PROTOCOL`);
+        console.log(`GUEST: Connecting to ${roomId} (LAN Mode)`);
         
         const options = {
             reliable: true,
-            serialization: 'json' // WICHTIG: Wir senden jetzt JSON/Text statt Binärdaten!
+            serialization: 'binary' // Zurück zu Binary für maximale Geschwindigkeit im WLAN
         };
 
         const c = this.peer.connect(roomId, options);
@@ -303,10 +298,8 @@ class VaultP2P {
         }
 
         try {
-            // 1. Base64 String zurück in ArrayBuffer wandeln
-            const encryptedBuffer = this.base64ToArrayBuffer(data);
-            // 2. Entschlüsseln
-            const decryptedBuffer = await this.decryptData(encryptedBuffer);
+            // Direktes Entschlüsseln der Binärdaten
+            const decryptedBuffer = await this.decryptData(data);
             const textDecoder = new TextDecoder();
             
             let isMeta = false;
@@ -368,20 +361,18 @@ class VaultP2P {
 
             // Send Metadata
             const meta = JSON.stringify({ fileName: file.name, fileSize: file.size });
-            const metaEncryptedBuffer = await this.encryptData(new TextEncoder().encode(meta));
-            const metaBase64 = this.arrayBufferToBase64(metaEncryptedBuffer);
+            const metaEncrypted = await this.encryptData(new TextEncoder().encode(meta));
             
-            this.connections.forEach(c => { if (c.open) c.send(metaBase64); });
+            this.connections.forEach(c => { if (c.open) c.send(metaEncrypted); });
 
             // Send Chunks
             const reader = new FileReader();
             let offset = 0;
 
             reader.onload = async (e) => {
-                const chunkEncryptedBuffer = await this.encryptData(e.target.result);
-                const chunkBase64 = this.arrayBufferToBase64(chunkEncryptedBuffer);
+                const chunkEncrypted = await this.encryptData(e.target.result);
                 
-                this.connections.forEach(c => { if (c.open) c.send(chunkBase64); });
+                this.connections.forEach(c => { if (c.open) c.send(chunkEncrypted); });
                 
                 offset += e.target.result.byteLength;
                 this.callbacks.onDataProgress(offset, file.size);
@@ -447,26 +438,5 @@ class VaultP2P {
         return window.crypto.subtle.decrypt(
             { name: "AES-GCM", iv: new Uint8Array(iv) }, this.sharedKey, data
         );
-    }
-
-    // --- BASE64 HELPERS (Für Text-Modus) ---
-    arrayBufferToBase64(buffer) {
-        let binary = '';
-        const bytes = new Uint8Array(buffer);
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        return window.btoa(binary);
-    }
-
-    base64ToArrayBuffer(base64) {
-        const binary_string = window.atob(base64);
-        const len = binary_string.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binary_string.charCodeAt(i);
-        }
-        return bytes.buffer;
     }
 }

@@ -16,7 +16,7 @@
 body {
     background-color: var(--bg-color);
     color: var(--text-color);
-    font-family: var(--font-mono);
+    font-family: var(--font-display); /* Premium Look: Sans-Serif als Standard */
     overflow: hidden;
     height: 100dvh;
     width: 100vw;
@@ -64,11 +64,26 @@ header {
 }
 
 .logo {
-    font-family: var(--font-mono);
+    font-family: var(--font-display);
     font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: 4px;
+    background: linear-gradient(to right, #fff, var(--accent-color));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 30px rgba(0, 229, 255, 0.4);
+}
+
+.lan-badge {
+    border: 1px solid rgba(0, 229, 255, 0.3);
+    background: rgba(0, 229, 255, 0.05);
+    color: var(--accent-color);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
     font-weight: bold;
-    letter-spacing: 2px;
-    text-shadow: 0 0 10px var(--accent-dim);
+    letter-spacing: 1px;
+    box-shadow: 0 0 10px var(--accent-dim);
 }
 
 .accent {
@@ -76,9 +91,9 @@ header {
 }
 
 .status-readout {
-    border: 1px solid var(--accent-color);
-    padding: 0.4rem 0.8rem;
-    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(0, 229, 255, 0.2);
+    padding: 0.5rem 1rem;
+    background: rgba(0, 10, 10, 0.4);
     backdrop-filter: blur(8px);
     border-radius: 4px;
     font-size: 0.8rem;
@@ -124,18 +139,71 @@ main {
     font-weight: 600;
     letter-spacing: 3px;
     color: var(--accent-color);
-    border: 2px dashed rgba(0, 229, 255, 0.5);
-    padding: 3rem 2rem;
-    border-radius: 16px;
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(5px);
+    border: 1px solid rgba(0, 229, 255, 0.15);
+    padding: 4rem 2rem;
+    border-radius: 50%; /* Circle shape for the hub look */
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(0, 229, 255, 0.03) 0%, rgba(0,0,0,0.2) 70%);
+    backdrop-filter: blur(10px);
     pointer-events: auto;
     cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(0, 229, 255, 0.02);
     text-transform: uppercase;
-    max-width: 90%;
-    width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    position: relative;
+}
+
+/* WiFi Animation in Drop Zone */
+.wifi-symbol {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    margin-bottom: 10px;
+}
+
+.wifi-dot {
+    width: 10px; height: 10px; background: var(--accent-color); border-radius: 50%;
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    box-shadow: 0 0 10px var(--accent-color);
+}
+
+.wifi-circle {
+    position: absolute;
+    border: 3px solid transparent;
+    border-top-color: var(--accent-color);
+    border-radius: 50%;
+    left: 50%; transform: translateX(-50%);
+    opacity: 0;
+    animation: wifi-pulse 2s infinite;
+}
+
+.wifi-circle.first { width: 30px; height: 30px; bottom: -5px; animation-delay: 0s; }
+.wifi-circle.second { width: 50px; height: 50px; bottom: -15px; animation-delay: 0.3s; }
+.wifi-circle.third { width: 70px; height: 70px; bottom: -25px; animation-delay: 0.6s; }
+
+@keyframes wifi-pulse {
+    0% { opacity: 0; }
+    50% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.drop-text-main {
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+}
+
+.drop-text-sub {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    letter-spacing: 1px;
+    font-family: var(--font-mono);
 }
 
 #gallery-btn {
@@ -156,10 +224,28 @@ main {
 /* Hover effect for the label */
 .drop-zone-label:hover {
     border-color: var(--accent-color);
-    background: rgba(0, 229, 255, 0.1);
-    transform: scale(1.05);
-    box-shadow: 0 0 30px var(--accent-dim);
+    background: radial-gradient(circle, rgba(0, 229, 255, 0.1) 0%, rgba(0,0,0,0.4) 70%);
+    transform: scale(1.02);
+    box-shadow: 0 0 60px rgba(0, 229, 255, 0.15), inset 0 0 30px rgba(0, 229, 255, 0.05);
 }
+
+.lan-warning {
+    margin-top: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background: rgba(255, 170, 0, 0.05);
+    border: 1px solid rgba(255, 170, 0, 0.2);
+    padding: 12px 24px;
+    border-radius: 12px;
+    pointer-events: none;
+    backdrop-filter: blur(5px);
+}
+
+.warning-icon { font-size: 1.5rem; }
+.warning-text { display: flex; flex-direction: column; text-align: left; }
+.warning-text strong { color: #ffaa00; font-size: 0.8rem; letter-spacing: 1px; text-transform: uppercase; font-family: var(--font-display); }
+.warning-text span { color: rgba(255, 255, 255, 0.5); font-size: 0.7rem; font-family: var(--font-display); }
 
 .usp-text {
     font-family: var(--font-display);
@@ -175,11 +261,11 @@ main {
     width: 90%;
     max-width: 400px;
     max-height: 70vh;
-    background: rgba(5, 5, 5, 0.75);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(0, 229, 255, 0.2);
-    border-radius: 16px;
+    background: rgba(10, 12, 14, 0.85);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
     padding: 1.5rem;
     pointer-events: auto;
     display: flex;
@@ -249,10 +335,11 @@ main {
 }
 
 .history-item {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 10px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-left: 2px solid var(--accent-color);
+    border-radius: 6px;
+    padding: 12px;
     margin-bottom: 8px;
     display: flex;
     flex-direction: column;
@@ -285,7 +372,7 @@ main {
     color: #000;
     font-weight: bold;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     box-shadow: 0 0 15px var(--accent-dim);
     transition: transform 0.2s;
@@ -298,7 +385,7 @@ main {
 }
 
 .history-btn {
-    background: rgba(0, 229, 255, 0.1);
+    background: transparent;
     border: 1px solid var(--accent-color);
     border-radius: 4px;
     color: var(--accent-color);
@@ -311,7 +398,8 @@ main {
 }
 
 .history-btn:hover {
-    background: var(--accent-dim);
+    background: var(--accent-color);
+    color: #000;
 }
 
 .energy-bar-container {
@@ -339,10 +427,10 @@ footer {
 }
 
 .link-container {
-    background: rgba(10, 10, 10, 0.6);
-    backdrop-filter: blur(10px);
-    padding: 0.6rem;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(10, 10, 10, 0.4);
+    backdrop-filter: blur(15px);
+    padding: 0.8rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 8px;
     position: relative;
     display: flex;
@@ -361,12 +449,13 @@ footer {
 }
 
 #copy-btn, #qr-btn, #new-room-btn, #share-btn {
-    background: var(--accent-color);
-    border: none;
-    color: #000;
-    padding: 6px 12px;
+    background: rgba(0, 229, 255, 0.1);
+    border: 1px solid rgba(0, 229, 255, 0.3);
+    color: var(--accent-color);
+    padding: 8px 16px;
     cursor: pointer;
-    font-weight: bold;
+    font-weight: 600;
+    font-family: var(--font-mono);
     border-radius: 4px;
     font-size: 0.75rem;
     transition: transform 0.1s;
@@ -376,16 +465,17 @@ footer {
     transform: scale(0.95);
 }
 
-#qr-btn, #share-btn {
-    margin-left: 5px;
-    background: #fff;
+#copy-btn:hover, #qr-btn:hover, #new-room-btn:hover, #share-btn:hover {
+    background: var(--accent-color);
+    color: #000;
+    box-shadow: 0 0 15px var(--accent-dim);
 }
 
-#new-room-btn {
+#qr-btn, #share-btn, #new-room-btn {
     margin-left: 5px;
-    background: transparent;
-    border: 1px solid var(--accent-color);
-    color: var(--accent-color);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #fff;
 }
 
 #qr-popup {
@@ -418,13 +508,13 @@ footer {
 }
 
 .toast {
-    background: rgba(10, 10, 10, 0.8);
-    border: 1px solid rgba(0, 229, 255, 0.3);
+    background: rgba(15, 15, 15, 0.9);
+    border: 1px solid rgba(0, 229, 255, 0.2);
     color: var(--accent-color);
     padding: 12px 20px;
     border-radius: 8px;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     font-size: 0.9rem;
     text-align: center;
     pointer-events: auto;
@@ -695,5 +785,14 @@ footer {
 
     #gallery-btn.mobile-only {
         display: block;
+    }
+
+    .drop-zone-label {
+        width: 240px;
+        height: 240px;
+        padding: 1rem;
+    }
+    .wifi-symbol {
+        transform: scale(0.8);
     }
 }

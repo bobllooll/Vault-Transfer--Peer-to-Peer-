@@ -9,12 +9,14 @@ let currentConnectionType = ''; // Speichert den aktuellen Verbindungstyp
 let connectionRetries = 0; // Zähler für Verbindungsversuche
 
 // --- UI ELEMENTS ---
-let statusEl, linkInput, dropLabel, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, repairBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer, limitModal, limitInput, confirmLimitBtn;
+let statusEl, linkInput, dropLabel, dropTextMain, dropTextSub, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, repairBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer, limitModal, limitInput, confirmLimitBtn, lanWarning;
 
 function setupUI() {
     statusEl = document.getElementById('connection-status');
     linkInput = document.getElementById('room-link');
     dropLabel = document.getElementById('drop-label');
+    dropTextMain = document.querySelector('.drop-text-main');
+    dropTextSub = document.querySelector('.drop-text-sub');
     galleryBtn = document.getElementById('gallery-btn');
     transferPanel = document.getElementById('transfer-panel');
     progressBar = document.getElementById('progress-bar');
@@ -36,6 +38,7 @@ function setupUI() {
     limitModal = document.getElementById('limit-modal');
     limitInput = document.getElementById('limit-input');
     confirmLimitBtn = document.getElementById('confirm-limit-btn');
+    lanWarning = document.querySelector('.lan-warning');
 }
 
 // --- INITIALIZATION ---
@@ -153,7 +156,9 @@ function setupP2PEvents() {
         // Status wird durch onConnectionType oder onPeerCountUpdate final gesetzt
         statusEl.innerText = `CONNECTED...`;
         statusEl.style.color = '#00e5ff';
-        dropLabel.innerText = 'DROP FILE TO INITIATE TRANSFER';
+        if (dropTextMain) dropTextMain.innerText = 'LOCAL TRANSFER';
+        if (dropTextSub) dropTextSub.innerText = 'DROP FILES HERE';
+        if (lanWarning) lanWarning.style.display = 'none';
         visuals.state.connected = true;
         showConnectionSuccess(); // Animation auslösen
         // Falls wir Host sind, haben wir schon eine Peer-Liste
@@ -182,6 +187,7 @@ function setupP2PEvents() {
             // Host Logic: Update counter, don't show modal if just one peer left but others remain
             statusEl.innerText = peerCount > 0 ? `CONNECTED (${total} USERS)` : 'WAITING FOR PEER (1 USER)';
             statusEl.style.color = peerCount > 0 ? '#00e5ff' : '#ffaa00';
+            if (peerCount === 0 && lanWarning) lanWarning.style.display = 'flex';
             visuals.state.connected = peerCount > 0;
             visuals.updateTopology(total); // Form aktualisieren
             disconnectModal.style.display = 'none';
@@ -189,6 +195,7 @@ function setupP2PEvents() {
             // Guest Logic: Connection lost to host
             statusEl.innerText = 'DISCONNECTED (1 USER)';
             statusEl.style.color = 'red';
+            if (lanWarning) lanWarning.style.display = 'flex';
             visuals.state.connected = false;
             visuals.updateTopology(1); // Zurück zum Ring
             disconnectModal.style.display = 'flex';
@@ -232,7 +239,7 @@ function setupP2PEvents() {
             modalText.innerText = 'The room has reached maximum capacity. Connection rejected.';
         } else if (err.type === 'connection-timed-out') {
             modalTitle.innerText = 'CONNECTION TIMED OUT';
-            modalText.innerText = 'The firewall negotiation took too long.\n\nSUGGESTION:\n1. Click "CREATE NEW ROOM" to retry.\n2. If it fails again, try switching networks (WiFi <-> Mobile).';
+            modalText.innerText = 'Could not connect to Host.\n\nREQUIRED:\nBoth devices must be connected to the\nSAME WIFI NETWORK.\n\nPlease check your WiFi settings.';
             // Zeige Repair Button
             if (repairBtn) repairBtn.style.display = 'inline-block';
         } else {
@@ -350,19 +357,19 @@ async function initializeGuest(id) {
     // Stufe 1: Info an Nutzer, dass es noch arbeitet
     setTimeout(() => {
         if (statusEl.innerText === 'CONNECTING...') {
-            statusEl.innerHTML = 'NEGOTIATING... <span class="spinner"></span>';
+            statusEl.innerHTML = 'SEARCHING LAN... <span class="spinner"></span>';
         }
     }, 3000);
 
-    // Stufe 2: Abbruch nach 60s (Browser Zeit geben)
+    // Stufe 2: Abbruch nach 15s (LAN sollte schnell sein)
     setTimeout(() => {
         const s = statusEl.innerText;
-        if (s.includes('CONNECTING') || s.includes('NEGOTIATING')) {
+        if (s.includes('CONNECTING') || s.includes('SEARCHING')) {
             p2p.callbacks.onError({ type: 'connection-timed-out' });
             // Zeige Repair Button bei Timeout
             if (repairBtn) repairBtn.style.display = 'inline-block';
         }
-    }, 60000);
+    }, 15000);
 }
 
 function setupQRCode() {
@@ -466,7 +473,8 @@ async function sendFile(file) {
         // UI Feedback: Wir warten
         const statusText = pendingFiles.length > 1 ? `${pendingFiles.length} FILES QUEUED` : file.name;
         document.getElementById('file-name').innerText = `${statusText} (Waiting for Peer...)`;
-        dropLabel.innerText = "WAITING FOR PEER...";
+        if (dropTextMain) dropTextMain.innerText = "WAITING FOR PEER";
+        if (dropTextSub) dropTextSub.innerText = "CONNECTING...";
         dropLabel.style.opacity = 1; // Label sichtbar machen (wurde von showTransferUI versteckt)
         return;
     }
@@ -746,7 +754,8 @@ async function handleSharedFile() {
             // UI Update (Warten auf Peer)
             showTransferUI(file.name);
             updateParticleColor(getFileColor(file.name));
-            dropLabel.innerText = "WAITING FOR PEER...";
+            if (dropTextMain) dropTextMain.innerText = "WAITING FOR PEER";
+            if (dropTextSub) dropTextSub.innerText = "SHARED FILE QUEUED";
             dropLabel.style.opacity = 1;
             document.getElementById('file-name').innerText = `${file.name} (Waiting for Peer...)`;
             

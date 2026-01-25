@@ -25,6 +25,7 @@
     <div class="ui-layer">
         <header>
             <div class="logo">VAULT <span class="accent">TRANSFER</span></div>
+            <div class="lan-badge">WIFI / LAN ONLY</div>
             <div class="status-readout">
                 <span id="connection-status">DISCONNECTED</span>
                 <span class="blink">_</span>
@@ -34,10 +35,26 @@
         <main>
             <input type="file" id="file-input" multiple style="display: none;">
             <input type="file" id="media-input" multiple accept="image/*,video/*" style="display: none;">
+            
             <div class="drop-zone-label" id="drop-label">
-                DROP FILE TO INITIATE TRANSFER
+                <div class="wifi-symbol">
+                    <div class="wifi-circle first"></div>
+                    <div class="wifi-circle second"></div>
+                    <div class="wifi-circle third"></div>
+                    <div class="wifi-dot"></div>
+                </div>
+                <div class="drop-text-main">LOCAL TRANSFER</div>
+                <div class="drop-text-sub">DROP FILES HERE</div>
             </div>
-            <div class="usp-text">Ideal für große Dateien, ZIP-Archive & Originalqualität. Funktioniert lokal & weltweit.</div>
+            
+            <div class="lan-warning">
+                <span class="warning-icon">⚠️</span>
+                <div class="warning-text">
+                    <strong>SAME WIFI REQUIRED</strong>
+                    <span>Devices must be on the same network.</span>
+                </div>
+            </div>
+
             <button id="gallery-btn" class="mobile-only">OPEN GALLERY</button>
             
             <div class="transfer-info" id="transfer-panel" style="display: none;">
@@ -72,7 +89,7 @@
                 <div id="qr-popup"></div>
             </div>
             <div class="privacy-notice">
-                SERVERLESS. P2P. ENCRYPTED.
+                SAME WIFI REQUIRED. P2P. ENCRYPTED.
             </div>
             <div id="toast-container"></div>
         </footer>
