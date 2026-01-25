@@ -40,6 +40,14 @@ function setupUI() {
 // --- INITIALIZATION ---
 async function init() {
     console.log(`--- ${CACHE_NAME} INIT ---`); // Prüfe in der Konsole, ob dies erscheint
+    
+    // Version im Header anzeigen (z.B. "v6.19")
+    const version = CACHE_NAME.replace('vault-transfer-', '');
+    const logoEl = document.querySelector('.logo');
+    if (logoEl) {
+        logoEl.innerHTML += ` <span style="font-size: 0.4em; opacity: 0.5; vertical-align: middle;">${version}</span>`;
+    }
+
     setupUI();
 
     // Initialize Engines
