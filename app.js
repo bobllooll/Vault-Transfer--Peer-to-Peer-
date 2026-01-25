@@ -219,7 +219,7 @@ function setupP2PEvents() {
             modalText.innerText = 'The firewall negotiation took too long.\n\nSUGGESTION:\n1. Click "CREATE NEW ROOM" to retry.\n2. If it fails again, try switching networks (WiFi <-> Mobile).';
         } else if (err.type === 'switching-protocols') {
             // Kein Fehler-Modal, nur Status-Update
-            statusEl.innerText = 'SWITCHING TO SECURE RELAY...';
+            statusEl.innerHTML = 'SWITCHING TO SECURE RELAY... <span class="spinner"></span>';
             statusEl.style.color = '#ffaa00';
             showToast('Firewall detected. Forcing TCP/TLS Tunnel...');
             return; 
@@ -338,14 +338,14 @@ async function initializeGuest(id) {
     // Stufe 1: Info an Nutzer, dass es noch arbeitet
     setTimeout(() => {
         if (statusEl.innerText === 'CONNECTING...') {
-            statusEl.innerText = 'NEGOTIATING FIREWALL...';
+            statusEl.innerHTML = 'NEGOTIATING FIREWALL... <span class="spinner"></span>';
         }
     }, 8000);
 
     // Stufe 2: Erst nach 45 Sekunden abbrechen (Relay braucht Zeit)
     setTimeout(() => {
         const s = statusEl.innerText;
-        if (s === 'CONNECTING...' || s === 'NEGOTIATING FIREWALL...') {
+        if (s.includes('CONNECTING') || s.includes('NEGOTIATING') || s.includes('SWITCHING')) {
             p2p.callbacks.onError({ type: 'connection-timed-out' });
         }
     }, 45000); // 45 Sekunden

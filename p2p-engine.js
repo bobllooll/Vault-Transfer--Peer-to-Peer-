@@ -26,7 +26,7 @@ const PEER_CONFIG = {
                 credential: "openrelayproject"
             }
         ],
-        iceCandidatePoolSize: 2 // Stark reduziert für Mobile-Netzwerke (verhindert Stau)
+        iceCandidatePoolSize: 4 // Erhöht, damit Kandidaten schneller bereit sind
     }
 };
 
@@ -175,17 +175,23 @@ class VaultP2P {
         this.handleConnection(c);
 
         // STRATEGIE: Aggressive ICE-Restart Heuristik (Watchdog)
-        // Wir warten nicht 45s. Wenn nach 8s nichts passiert, ist UDP wahrscheinlich blockiert.
+        // Wir warten nicht 45s. Wenn nach 20s nichts passiert, ist UDP wahrscheinlich blockiert.
         setTimeout(() => {
             if (!c.open && this.connections.length === 1 && this.connections[0] === c) {
                 if (!forceRelay) {
                     console.warn("Watchdog: UDP stuck. Triggering TCP/TLS Fallback.");
+                    
+                    // 1. UI informieren (Spinner zeigen)
+                    this.callbacks.onError({ type: 'switching-protocols' });
+                    
+                    // 2. WICHTIG: 'close' Event entfernen, damit kein "Disconnected" Modal aufpoppt
+                    c.removeAllListeners('close');
                     this.cleanupConnection(c);
-                    this.callbacks.onError({ type: 'switching-protocols' }); // UI Info
+                    
                     this.connectToHost(roomId, true); // Retry mit Relay
                 }
             }
-        }, 8000); // Erhöht auf 8s für langsame Mobile-Netze
+        }, 20000); // Erhöht auf 20s für langsame Mobile-Netze (LTE Latenz)
     }
 
     handleConnection(c) {
