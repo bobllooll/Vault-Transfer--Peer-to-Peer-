@@ -5,7 +5,7 @@ const ASSETS = [
     '/style.css',
     '/app.js',
     '/vault-transfer-icon.svg',
-    'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js',
+    'https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js'

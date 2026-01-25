@@ -1,23 +1,16 @@
 // Konfiguration für bessere Verbindungen (STUN hilft durch Firewalls)
 const PEER_CONFIG = {
-    debug: 2, // Optimiertes Logging
+    debug: 1, // Weniger Noise
     pingInterval: 5000, // Hält die Signaling-Verbindung auf Handys aktiv (Heartbeat)
     config: {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            // Reduzierte Liste um SDP-Größe klein zu halten (Mobile MTU Fix)
             {
                 urls: "turns:openrelay.metered.ca:443?transport=tcp",
                 username: "openrelayproject",
                 credential: "openrelayproject"
-            },
-            {
-                urls: "turn:openrelay.metered.ca:80?transport=tcp", // Fallback Port 80 TCP
-                username: "openrelayproject",
-                credential: "openrelayproject"
             }
-        ],
-        iceCandidatePoolSize: 2 // Reduziert für Stabilität
+        ]
     }
 };
 
@@ -26,7 +19,7 @@ class VaultP2P {
         this.peer = null;
         this.connections = [];
         this.sharedKey = null;
-        this.CHUNK_SIZE = 8 * 1024; // Reduziert auf 8KB für bessere Mobile-Kompatibilität (MTU)
+        this.CHUNK_SIZE = 16 * 1024; // Base64 braucht etwas mehr Platz
         this.callbacks = {
             onConnect: () => {},
             onDisconnect: () => {},
@@ -143,11 +136,11 @@ class VaultP2P {
     }
 
     connectToHost(roomId) {
-        console.log(`GUEST: Connecting to ${roomId} with OPTIMIZED CONFIG`);
+        console.log(`GUEST: Connecting to ${roomId} using TEXT PROTOCOL`);
         
         const options = {
             reliable: true,
-            serialization: 'binary'
+            serialization: 'json' // WICHTIG: Wir senden jetzt JSON/Text statt Binärdaten!
         };
 
         const c = this.peer.connect(roomId, options);
@@ -310,11 +303,12 @@ class VaultP2P {
         }
 
         try {
-            const decryptedBuffer = await this.decryptData(data);
+            // 1. Base64 String zurück in ArrayBuffer wandeln
+            const encryptedBuffer = this.base64ToArrayBuffer(data);
+            // 2. Entschlüsseln
+            const decryptedBuffer = await this.decryptData(encryptedBuffer);
             const textDecoder = new TextDecoder();
             
-            // Try to parse as metadata first (naive check but fast)
-            // In a prod app, we would send a packet type header
             let isMeta = false;
             if (decryptedBuffer.byteLength < 1000) {
                 try {
@@ -374,18 +368,20 @@ class VaultP2P {
 
             // Send Metadata
             const meta = JSON.stringify({ fileName: file.name, fileSize: file.size });
-            const metaEncrypted = await this.encryptData(new TextEncoder().encode(meta));
+            const metaEncryptedBuffer = await this.encryptData(new TextEncoder().encode(meta));
+            const metaBase64 = this.arrayBufferToBase64(metaEncryptedBuffer);
             
-            this.connections.forEach(c => { if (c.open) c.send(metaEncrypted); });
+            this.connections.forEach(c => { if (c.open) c.send(metaBase64); });
 
             // Send Chunks
             const reader = new FileReader();
             let offset = 0;
 
             reader.onload = async (e) => {
-                const chunkEncrypted = await this.encryptData(e.target.result);
+                const chunkEncryptedBuffer = await this.encryptData(e.target.result);
+                const chunkBase64 = this.arrayBufferToBase64(chunkEncryptedBuffer);
                 
-                this.connections.forEach(c => { if (c.open) c.send(chunkEncrypted); });
+                this.connections.forEach(c => { if (c.open) c.send(chunkBase64); });
                 
                 offset += e.target.result.byteLength;
                 this.callbacks.onDataProgress(offset, file.size);
@@ -451,5 +447,26 @@ class VaultP2P {
         return window.crypto.subtle.decrypt(
             { name: "AES-GCM", iv: new Uint8Array(iv) }, this.sharedKey, data
         );
+    }
+
+    // --- BASE64 HELPERS (Für Text-Modus) ---
+    arrayBufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
+    }
+
+    base64ToArrayBuffer(base64) {
+        const binary_string = window.atob(base64);
+        const len = binary_string.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binary_string.charCodeAt(i);
+        }
+        return bytes.buffer;
     }
 }
