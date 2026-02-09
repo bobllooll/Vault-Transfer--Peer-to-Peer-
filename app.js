@@ -8,8 +8,12 @@ let receivedFilesCache = []; // Speicher für alle empfangenen Dateien
 let currentConnectionType = ''; // Speichert den aktuellen Verbindungstyp
 let connectionRetries = 0; // Zähler für Verbindungsversuche
 
+// Speed Tracking
+let lastProgressTime = 0;
+let lastProgressBytes = 0;
+
 // --- UI ELEMENTS ---
-let statusEl, linkInput, dropLabel, dropTextMain, dropTextSub, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, repairBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer, limitModal, limitInput, confirmLimitBtn, lanWarning;
+let statusEl, linkInput, dropLabel, dropTextMain, dropTextSub, galleryBtn, transferPanel, progressBar, speedEl, shareBtn, qrBtn, qrPopup, newRoomBtn, repairBtn, disconnectModal, reconnectBtn, gdprBanner, downloadAllBtn, closePanelBtn, startScreen, startCreateBtn, startScanBtn, qrScannerContainer, limitModal, limitInput, confirmLimitBtn, lanWarning, connectionTypeBadge;
 
 function setupUI() {
     statusEl = document.getElementById('connection-status');
@@ -39,6 +43,7 @@ function setupUI() {
     limitInput = document.getElementById('limit-input');
     confirmLimitBtn = document.getElementById('confirm-limit-btn');
     lanWarning = document.querySelector('.lan-warning');
+    connectionTypeBadge = document.getElementById('connection-type-badge');
 }
 
 // --- INITIALIZATION ---
@@ -76,7 +81,7 @@ async function init() {
     console.log(`%c 🌐  BROWSER:  %c${browser}`, 'color: #888; font-family: monospace;', 'color: #00e5ff; font-family: monospace; font-weight: bold;');
     console.log(`%c 🔒  PROTOCOL: %cSECURE LAN (P2P)`, 'color: #888; font-family: monospace;', 'color: #00ff00; font-family: monospace; font-weight: bold;');
     console.groupEnd();
-    
+
     // Version im Header anzeigen (z.B. "v6.19")
     const version = CACHE_NAME.replace('hanneken-cloud-', '');
     const logoEl = document.querySelector('.logo');
@@ -135,7 +140,7 @@ async function init() {
         disconnectModal.style.display = 'none';
         createNewRoom();
     });
-    
+
     if (repairBtn) {
         repairBtn.addEventListener('click', () => {
             window.location.reload(); // Hard Reset ist oft am sichersten
@@ -179,6 +184,42 @@ async function init() {
         if (p2p) p2p.destroy();
     });
 
+    // Clipboard Paste Support (Ctrl+V)
+    document.addEventListener('paste', async (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (const item of items) {
+            // Handle images from clipboard
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const blob = item.getAsFile();
+                if (blob) {
+                    const fileName = `clipboard_${Date.now()}.png`;
+                    const file = new File([blob], fileName, { type: 'image/png' });
+                    showToast('SENDING CLIPBOARD IMAGE...');
+                    await sendFile(file);
+                }
+                return;
+            }
+
+            // Handle text from clipboard
+            if (item.type === 'text/plain') {
+                item.getAsString(async (text) => {
+                    if (text && text.trim().length > 0 && text.length < 100000) {
+                        e.preventDefault();
+                        const blob = new Blob([text], { type: 'text/plain' });
+                        const fileName = `clipboard_${Date.now()}.txt`;
+                        const file = new File([blob], fileName, { type: 'text/plain' });
+                        showToast('SENDING CLIPBOARD TEXT...');
+                        await sendFile(file);
+                    }
+                });
+                return;
+            }
+        }
+    });
+
     setupP2PEvents();
 }
 
@@ -195,7 +236,7 @@ function setupP2PEvents() {
         showConnectionSuccess(); // Animation auslösen
         // Falls wir Host sind, haben wir schon eine Peer-Liste
         if (p2p.peers && p2p.peers.length > 0) visuals.updateTopology(p2p.peers);
-        
+
         // Warteschlange abarbeiten
         if (pendingFiles.length > 0) {
             showToast(`SENDING ${pendingFiles.length} QUEUED FILES...`);
@@ -210,11 +251,29 @@ function setupP2PEvents() {
         currentConnectionType = type;
         // Update Status Text sofort
         updateStatusText(p2p.peers.length || 1);
+
+        // Update Connection Type Badge
+        if (connectionTypeBadge) {
+            if (type.includes('LAN')) {
+                connectionTypeBadge.textContent = 'LAN';
+                connectionTypeBadge.className = 'lan';
+            } else if (type.includes('RELAY') || type.includes('TURN')) {
+                connectionTypeBadge.textContent = 'RELAY';
+                connectionTypeBadge.className = 'relay';
+            } else if (type.includes('WAN')) {
+                connectionTypeBadge.textContent = 'WAN';
+                connectionTypeBadge.className = 'lan';
+            } else {
+                connectionTypeBadge.textContent = 'P2P';
+                connectionTypeBadge.className = 'lan';
+            }
+            connectionTypeBadge.style.display = 'inline-block';
+        }
     });
 
     p2p.on('onDisconnect', (peerCount) => {
         const total = (peerCount || 0) + 1;
-        
+
         if (p2p.isHost) {
             // Host Logic: Update counter, don't show modal if just one peer left but others remain
             statusEl.innerText = peerCount > 0 ? `CONNECTED (${total} USERS)` : 'WAITING FOR PEER (1 USER)';
@@ -231,7 +290,7 @@ function setupP2PEvents() {
             visuals.state.connected = false;
             visuals.updateTopology(1); // Zurück zum Ring
             disconnectModal.style.display = 'flex';
-            
+
             const modalTitle = document.querySelector('#disconnect-modal h2');
             const modalText = document.querySelector('#disconnect-modal p');
             modalTitle.innerText = 'CONNECTION LOST';
@@ -253,10 +312,10 @@ function setupP2PEvents() {
 
         statusEl.innerText = 'CONNECTION ERROR';
         statusEl.style.color = 'red';
-        
+
         const modalTitle = document.querySelector('#disconnect-modal h2');
         const modalText = document.querySelector('#disconnect-modal p');
-        
+
         if (err.type === 'peer-unavailable') {
             // Auto-Retry Logik (3 Versuche)
             if (connectionRetries < 3) {
@@ -280,26 +339,26 @@ function setupP2PEvents() {
             modalTitle.innerText = 'CONNECTION ERROR';
             modalText.innerText = `An anomaly occurred: ${err.type}`;
         }
-        
+
         disconnectModal.style.display = 'flex';
     });
 
     p2p.on('onIncomingInfo', (info) => handleIncomingInfo(info));
     p2p.on('onDataProgress', (current, total) => updateProgress(current, total));
     p2p.on('onFileReceived', (blob, name) => handleFileReceived(blob, name));
-    
+
     p2p.on('onPeerCountUpdate', (data) => {
         console.log("DEBUG: Peer Update Data received:", data); // Log für dich
-        
+
         let displayCount = 1;
         if (Array.isArray(data)) {
             displayCount = data.length;
         } else if (typeof data === 'number') {
             displayCount = data;
         }
-        
+
         console.log("DEBUG: Display Count calculated:", displayCount);
-        
+
         updateStatusText(displayCount);
         visuals.state.connected = true;
         visuals.updateTopology(data);
@@ -320,22 +379,22 @@ async function initializeHost() {
 
     let maxPeers = limit - 1;
     if (maxPeers < 1) maxPeers = 1;
-    
+
     statusEl.innerText = 'INITIALIZING...';
     const deviceType = window.innerWidth <= 768 ? 'mobile' : 'desktop';
-    
+
     // STICKY ID: Versuche alte ID wiederherzustellen (gegen Reload-Tod)
     const savedId = sessionStorage.getItem('hanneken-host-id');
-    
+
     const { roomId: id, keyString } = await p2p.initHost(maxPeers, deviceType, savedId);
     roomId = id;
-    
+
     // ID für Reloads speichern
     sessionStorage.setItem('hanneken-host-id', roomId);
-    
+
     const fullLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}#${keyString}`;
     linkInput.value = fullLink;
-    
+
     statusEl.innerText = 'WAITING FOR PEER (1 USER)';
     statusEl.style.color = '#ffaa00';
     updateQRCode(fullLink);
@@ -370,7 +429,7 @@ function getUserLimit() {
 async function initializeGuest(id) {
     const hash = window.location.hash.substring(1);
     roomId = id; // Global speichern für Retries
-    
+
     // WICHTIG: Alte Verbindung komplett killen bevor wir es neu versuchen
     if (p2p) p2p.destroy();
     p2p = new VaultP2P();
@@ -425,10 +484,10 @@ let html5QrCode;
 function startQRScanner() {
     startScreen.style.display = 'none';
     qrScannerContainer.style.display = 'flex';
-    
+
     html5QrCode = new Html5Qrcode("qr-reader");
     html5QrCode.start(
-        { facingMode: "environment" }, 
+        { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText, decodedResult) => {
             // Handle Success
@@ -466,10 +525,10 @@ function setupShareButton() {
 async function createNewRoom() {
     // Cleanup Old Connection
     if (p2p) p2p.destroy();
-    
+
     // FIX: Sticky ID löschen, sonst bekommen wir nach dem Reload wieder denselben Raum!
     sessionStorage.removeItem('hanneken-host-id');
-    
+
     resetUI();
     // Reload page to ensure clean state (simplest way for now)
     window.location.href = window.location.pathname;
@@ -484,7 +543,7 @@ function handleIncomingInfo(info) {
 function handleFileReceived(blob, name) {
     addToHistory(name, blob);
     receivedFilesCache.push({ fileName: name, blob: blob });
-    
+
     visuals.state.transferring = false;
     resetUI();
 }
@@ -499,11 +558,11 @@ async function sendFile(file) {
     // NEU: Warten, bis jemand da ist (Queue)
     if (p2p.connections.length === 0) {
         pendingFiles.push(file);
-        
+
         visuals.state.transferring = true;
         showTransferUI(file.name);
         updateParticleColor(getFileColor(file.name));
-        
+
         // UI Feedback: Wir warten
         const statusText = pendingFiles.length > 1 ? `${pendingFiles.length} FILES QUEUED` : file.name;
         document.getElementById('file-name').innerText = `${statusText} (Waiting for Peer...)`;
@@ -516,9 +575,9 @@ async function sendFile(file) {
     visuals.state.transferring = true;
     showTransferUI(file.name);
     updateParticleColor(getFileColor(file.name));
-    
+
     await p2p.sendFile(file);
-    
+
     visuals.state.transferring = false;
     resetUI();
 }
@@ -530,7 +589,7 @@ function showToast(message, duration = 3000) {
     const toast = document.createElement('div');
     toast.className = 'toast';
     toast.innerText = message;
-    
+
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -542,9 +601,9 @@ function showToast(message, duration = 3000) {
 function showConnectionSuccess() {
     const overlay = document.getElementById('success-overlay');
     if (!overlay) return;
-    
+
     overlay.style.display = 'flex';
-    
+
     // Nach 2.5 Sekunden ausblenden
     setTimeout(() => {
         overlay.style.transition = 'opacity 0.5s ease';
@@ -570,29 +629,29 @@ function addToHistory(fileName, blob) {
     const historyContainer = document.getElementById('file-history');
     const item = document.createElement('div');
     item.className = 'history-item';
-    
+
     const nameSpan = document.createElement('span');
     nameSpan.className = 'history-name';
     nameSpan.innerText = fileName;
-    
+
     const actions = document.createElement('div');
     actions.className = 'history-actions';
-    
+
     const downloadBtn = document.createElement('button');
     downloadBtn.className = 'history-btn';
     downloadBtn.innerText = 'DOWNLOAD';
     downloadBtn.onclick = () => downloadFile(blob, fileName);
-    
+
     actions.appendChild(downloadBtn);
-    
+
     item.appendChild(nameSpan);
-    
+
     item.appendChild(actions);
-    
+
     // Füge neues Element oben ein
     historyContainer.insertBefore(item, historyContainer.firstChild);
     transferPanel.style.display = 'block'; // Panel offen lassen
-    
+
     // Zeige "Download All" Button wenn mehr als 0 Dateien
     downloadAllBtn.style.display = 'block';
 }
@@ -600,10 +659,25 @@ function addToHistory(fileName, blob) {
 function updateProgress(current, total) {
     const percent = Math.floor((current / total) * 100);
     progressBar.style.width = `${percent}%`;
-    
-    // Simple speed simulation (visual only for this demo)
-    const speed = (Math.random() * 5 + 2).toFixed(1);
-    speedEl.innerText = `${speed} MB/s`;
+
+    // Real speed calculation
+    const now = Date.now();
+    if (lastProgressTime > 0) {
+        const timeDiff = (now - lastProgressTime) / 1000; // seconds
+        const bytesDiff = current - lastProgressBytes;
+        if (timeDiff > 0) {
+            const speed = (bytesDiff / timeDiff) / (1024 * 1024); // MB/s
+            speedEl.innerText = `${speed.toFixed(1)} MB/s`;
+        }
+    }
+    lastProgressTime = now;
+    lastProgressBytes = current;
+
+    // Reset when transfer complete
+    if (current >= total) {
+        lastProgressTime = 0;
+        lastProgressBytes = 0;
+    }
 }
 
 function resetUI() {
@@ -638,7 +712,7 @@ function downloadFile(blob, fileName) {
 function setupDragAndDrop() {
     const fileInput = document.getElementById('file-input');
     const mediaInput = document.getElementById('media-input');
-    
+
     // 1. Click to Upload (Mobile/Desktop)
     dropLabel.addEventListener('click', () => fileInput.click());
 
@@ -704,7 +778,7 @@ function setupFaviconAnimation() {
     canvas.width = 64;
     canvas.height = 64;
     const ctx = canvas.getContext('2d');
-    
+
     const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
     link.type = 'image/x-icon';
     link.rel = 'icon';
@@ -732,7 +806,7 @@ function setupFaviconAnimation() {
         ctx.beginPath();
         ctx.arc(0, 0, 22, 0, Math.PI * 2);
         ctx.lineWidth = 3;
-        ctx.setLineDash([12, 24]); 
+        ctx.setLineDash([12, 24]);
         ctx.stroke();
         ctx.restore();
 
@@ -764,11 +838,11 @@ function setupFaviconAnimation() {
 
         // Favicon aktualisieren
         link.href = canvas.toDataURL();
-        
+
         // ~15 FPS für Performance (reicht für ein kleines Icon)
         setTimeout(() => requestAnimationFrame(animate), 66);
     }
-    
+
     animate();
 }
 
@@ -776,15 +850,15 @@ async function handleSharedFile() {
     try {
         const cache = await caches.open('hanneken-shared-files');
         const response = await cache.match('shared-file');
-        
+
         if (response) {
             const blob = await response.blob();
             const name = response.headers.get('X-File-Name') || 'shared_file';
             const file = new File([blob], name, { type: blob.type });
-            
+
             // Datei vormerken
             pendingFiles.push(file);
-            
+
             // UI Update (Warten auf Peer)
             showTransferUI(file.name);
             updateParticleColor(getFileColor(file.name));
@@ -792,7 +866,7 @@ async function handleSharedFile() {
             if (dropTextSub) dropTextSub.innerText = "SHARED FILE QUEUED";
             dropLabel.style.opacity = 1;
             document.getElementById('file-name').innerText = `${file.name} (Waiting for Peer...)`;
-            
+
             // Cache bereinigen
             await cache.delete('shared-file');
         }
