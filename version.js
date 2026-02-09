@@ -1,1 +1,1 @@
-const CACHE_NAME = 'vault-transfer-v7.5'; // VERSION BUMP: Zwingt Browser zum Update
+const CACHE_NAME = 'hanneken-cloud-v7.9'; // VERSION BUMP: Zwingt Browser zum Update

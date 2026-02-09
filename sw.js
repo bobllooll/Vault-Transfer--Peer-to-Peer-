@@ -17,7 +17,6 @@ self.addEventListener('install', (e) => {
 
 // Lösche alte Caches beim Aktivieren des neuen Service Workers
 self.addEventListener('activate', (e) => {
-    console.log(`%c SERVICE WORKER: Active Version ${CACHE_NAME} `, 'background: #00e5ff; color: #000; font-weight: bold;');
     e.waitUntil(
         caches.keys().then((keyList) => {
             return Promise.all(keyList.map((key) => {
@@ -39,7 +38,7 @@ self.addEventListener('fetch', (e) => {
                 
                 if (file) {
                     // Datei im Cache zwischenspeichern
-                    const cache = await caches.open('vault-shared-files');
+                    const cache = await caches.open('hanneken-shared-files');
                     await cache.put('shared-file', new Response(file, {
                         headers: { 'Content-Type': file.type, 'X-File-Name': file.name }
                     }));

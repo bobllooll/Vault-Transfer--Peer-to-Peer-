@@ -1,10 +1,28 @@
-// Konfiguration für bessere Verbindungen (STUN hilft durch Firewalls)
+// Konfiguration für globale Verbindungen (STUN + TURN für weltweite Transfers)
 const PEER_CONFIG = {
     debug: 1, // Weniger Noise
     pingInterval: 5000, // Hält die Signaling-Verbindung auf Handys aktiv (Heartbeat)
     config: {
         iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' } // Nur STUN für IP-Discovery nötig
+            // STUN für IP-Discovery
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' },
+            // TURN Relay für globale Transfers (Metered.ca Open Relay - kostenlos)
+            {
+                urls: 'turn:a.relay.metered.ca:80',
+                username: 'e0cb3eb9e1e0f1b3d3b846e1',
+                credential: 'lHcR9y+R8+6tqYQR'
+            },
+            {
+                urls: 'turn:a.relay.metered.ca:443',
+                username: 'e0cb3eb9e1e0f1b3d3b846e1',
+                credential: 'lHcR9y+R8+6tqYQR'
+            },
+            {
+                urls: 'turns:a.relay.metered.ca:443',
+                username: 'e0cb3eb9e1e0f1b3d3b846e1',
+                credential: 'lHcR9y+R8+6tqYQR'
+            }
         ]
     }
 };

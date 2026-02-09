@@ -43,10 +43,42 @@ function setupUI() {
 
 // --- INITIALIZATION ---
 async function init() {
-    console.log(`--- ${CACHE_NAME} INIT ---`); // Prüfe in der Konsole, ob dies erscheint
+    // ASCII Art & System Info
+    console.log(
+        `%c HANNEKEN.CLOUD %c ${CACHE_NAME} `,
+        'background: #050505; color: #00e5ff; font-size: 25px; font-weight: 900; border: 2px solid #00e5ff; padding: 10px 20px; border-radius: 8px; text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);',
+        'background: #00e5ff; color: #000; font-size: 12px; font-weight: bold; padding: 4px 8px; border-radius: 4px; margin-left: 10px;'
+    );
+
+    // System Info Detection
+    const ua = navigator.userAgent;
+    let os = "Unknown OS";
+    if (ua.indexOf("Win") !== -1) os = "Windows";
+    else if (ua.indexOf("Mac") !== -1 && ua.indexOf("Mobile") === -1) os = "macOS";
+    else if (ua.indexOf("Linux") !== -1 && ua.indexOf("Android") === -1) os = "Linux";
+    else if (ua.indexOf("Android") !== -1) os = "Android";
+    else if (ua.indexOf("iPhone") !== -1 || ua.indexOf("iPad") !== -1) os = "iOS";
+
+    let browser = "Unknown";
+    if (ua.indexOf("Edg") !== -1) browser = "Edge";
+    else if (ua.indexOf("Chrome") !== -1) browser = "Chrome";
+    else if (ua.indexOf("Firefox") !== -1) browser = "Firefox";
+    else if (ua.indexOf("Safari") !== -1) browser = "Safari";
+
+    console.log(
+        `%c SYSTEM ONLINE %c ${CACHE_NAME} `,
+        'background: #050505; color: #00e5ff; font-size: 14px; font-weight: 900; border: 1px solid #00e5ff; padding: 4px 8px; border-radius: 4px;',
+        'background: #00e5ff; color: #000; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 2px; margin-left: 5px;'
+    );
+
+    console.group('%c DIAGNOSTICS ', 'color: #666; font-family: monospace; margin-top: 5px;');
+    console.log(`%c 🖥️  OS:       %c${os}`, 'color: #888; font-family: monospace;', 'color: #00e5ff; font-family: monospace; font-weight: bold;');
+    console.log(`%c 🌐  BROWSER:  %c${browser}`, 'color: #888; font-family: monospace;', 'color: #00e5ff; font-family: monospace; font-weight: bold;');
+    console.log(`%c 🔒  PROTOCOL: %cSECURE LAN (P2P)`, 'color: #888; font-family: monospace;', 'color: #00ff00; font-family: monospace; font-weight: bold;');
+    console.groupEnd();
     
     // Version im Header anzeigen (z.B. "v6.19")
-    const version = CACHE_NAME.replace('vault-transfer-', '');
+    const version = CACHE_NAME.replace('hanneken-cloud-', '');
     const logoEl = document.querySelector('.logo');
     if (logoEl) {
         logoEl.innerHTML += ` <span style="font-size: 0.4em; opacity: 0.5; vertical-align: middle;">${version}</span>`;
@@ -70,7 +102,7 @@ async function init() {
     }
 
     // GDPR Check
-    if (!localStorage.getItem('vault-gdpr-consent') && gdprBanner) {
+    if (!localStorage.getItem('hanneken-gdpr-consent') && gdprBanner) {
         gdprBanner.style.display = 'flex';
     }
 
@@ -111,7 +143,7 @@ async function init() {
     }
 
     document.getElementById('gdpr-accept').addEventListener('click', () => {
-        localStorage.setItem('vault-gdpr-consent', 'true');
+        localStorage.setItem('hanneken-gdpr-consent', 'true');
         gdprBanner.style.display = 'none';
     });
 
@@ -293,13 +325,13 @@ async function initializeHost() {
     const deviceType = window.innerWidth <= 768 ? 'mobile' : 'desktop';
     
     // STICKY ID: Versuche alte ID wiederherzustellen (gegen Reload-Tod)
-    const savedId = sessionStorage.getItem('vault-host-id');
+    const savedId = sessionStorage.getItem('hanneken-host-id');
     
     const { roomId: id, keyString } = await p2p.initHost(maxPeers, deviceType, savedId);
     roomId = id;
     
     // ID für Reloads speichern
-    sessionStorage.setItem('vault-host-id', roomId);
+    sessionStorage.setItem('hanneken-host-id', roomId);
     
     const fullLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}#${keyString}`;
     linkInput.value = fullLink;
@@ -417,8 +449,8 @@ function setupShareButton() {
         shareBtn.addEventListener('click', async () => {
             try {
                 await navigator.share({
-                    title: 'Vault Transfer',
-                    text: 'Tap to join Vault Room (AirDrop / Nearby Share):',
+                    title: 'Hanneken.Cloud',
+                    text: 'Tap to join Hanneken.Cloud Room (AirDrop / Nearby Share):',
                     url: linkInput.value
                 });
             } catch (err) {
@@ -436,7 +468,7 @@ async function createNewRoom() {
     if (p2p) p2p.destroy();
     
     // FIX: Sticky ID löschen, sonst bekommen wir nach dem Reload wieder denselben Raum!
-    sessionStorage.removeItem('vault-host-id');
+    sessionStorage.removeItem('hanneken-host-id');
     
     resetUI();
     // Reload page to ensure clean state (simplest way for now)
@@ -742,7 +774,7 @@ function setupFaviconAnimation() {
 
 async function handleSharedFile() {
     try {
-        const cache = await caches.open('vault-shared-files');
+        const cache = await caches.open('hanneken-shared-files');
         const response = await cache.match('shared-file');
         
         if (response) {

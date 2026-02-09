@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,6 +17,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js"></script>
     <script src="version.js"></script>
 </head>
+
 <body>
 
     <!-- 3D Background -->
@@ -24,8 +26,8 @@
     <!-- UI Overlay -->
     <div class="ui-layer">
         <header>
-            <div class="logo">VAULT <span class="accent">TRANSFER</span></div>
-            <div class="lan-badge">WIFI / LAN ONLY</div>
+            <div class="logo">HANNEKEN<span class="accent">.CLOUD</span></div>
+            <div class="lan-badge" style="background: linear-gradient(135deg, #00ff88, #00d4ff);">GLOBAL TRANSFER</div>
             <div class="status-readout">
                 <span id="connection-status">DISCONNECTED</span>
                 <span class="blink">_</span>
@@ -35,7 +37,7 @@
         <main>
             <input type="file" id="file-input" multiple style="display: none;">
             <input type="file" id="media-input" multiple accept="image/*,video/*" style="display: none;">
-            
+
             <div class="drop-zone-label" id="drop-label">
                 <div class="wifi-symbol">
                     <div class="wifi-circle first"></div>
@@ -43,26 +45,26 @@
                     <div class="wifi-circle third"></div>
                     <div class="wifi-dot"></div>
                 </div>
-                <div class="drop-text-main">LOCAL TRANSFER</div>
+                <div class="drop-text-main">GLOBAL TRANSFER</div>
                 <div class="drop-text-sub">DROP FILES HERE</div>
             </div>
-            
-            <div class="lan-warning">
-                <span class="warning-icon">⚠️</span>
+
+            <div class="lan-warning" style="border-color: #00ff88;">
+                <span class="warning-icon">🌍</span>
                 <div class="warning-text">
-                    <strong>SAME WIFI REQUIRED</strong>
-                    <span>Devices must be on the same network.</span>
+                    <strong>WORLDWIDE TRANSFERS</strong>
+                    <span>Works across any network. End-to-end encrypted.</span>
                 </div>
             </div>
 
             <button id="gallery-btn" class="mobile-only">OPEN GALLERY</button>
-            
+
             <div class="transfer-info" id="transfer-panel" style="display: none;">
                 <div class="file-meta">
                     <span class="transfer-title">INCOMING DATA STREAM</span>
                     <button id="close-panel-btn">×</button>
                 </div>
-                
+
                 <div id="current-transfer-info">
                     <span id="file-name">Waiting...</span>
                     <span id="transfer-speed"></span>
@@ -89,7 +91,7 @@
                 <div id="qr-popup"></div>
             </div>
             <div class="privacy-notice">
-                SAME WIFI REQUIRED. P2P. ENCRYPTED.
+                GLOBAL P2P. END-TO-END ENCRYPTED. NO SERVER STORAGE.
             </div>
             <div id="toast-container"></div>
         </footer>
@@ -98,7 +100,7 @@
     <!-- Mobile Start Screen -->
     <div id="start-screen" style="display: none;">
         <div class="start-content">
-            <div class="logo-large">VAULT <span class="accent">TRANSFER</span></div>
+            <div class="logo-large">HANNEKEN<span class="accent">.CLOUD</span></div>
             <div class="start-buttons">
                 <button id="start-create-btn">CREATE ROOM</button>
                 <button id="start-scan-btn">SCAN QR CODE</button>
@@ -143,8 +145,8 @@
     <div id="success-overlay" style="display: none;">
         <div class="checkmark-wrapper">
             <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
-                <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
-                <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+                <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none" />
+                <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
             </svg>
             <div class="success-text">PEER CONNECTED</div>
         </div>
@@ -157,9 +159,9 @@
         // Nur registrieren, wenn wir auf einem Server laufen (http/https), nicht file://
         if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
             navigator.serviceWorker.register('sw.js')
-                .then(() => console.log('Service Worker Registered'))
                 .catch(err => console.log('SW Error:', err));
         }
     </script>
 </body>
+
 </html>
