@@ -7,21 +7,27 @@ const PEER_CONFIG = {
             // STUN für IP-Discovery
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun.cloudflare.com:3478' },
-            // TURN Relay für globale Transfers (Metered.ca Open Relay - kostenlos)
+            // TURN Relay für globale Transfers (Metered.ca Open Relay - Static Auth)
             {
-                urls: 'turn:a.relay.metered.ca:80',
-                username: 'e0cb3eb9e1e0f1b3d3b846e1',
-                credential: 'lHcR9y+R8+6tqYQR'
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
             },
             {
-                urls: 'turn:a.relay.metered.ca:443',
-                username: 'e0cb3eb9e1e0f1b3d3b846e1',
-                credential: 'lHcR9y+R8+6tqYQR'
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
             },
             {
-                urls: 'turns:a.relay.metered.ca:443',
-                username: 'e0cb3eb9e1e0f1b3d3b846e1',
-                credential: 'lHcR9y+R8+6tqYQR'
+                urls: 'turns:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            // Backup: Standard Relay
+            {
+                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
             }
         ]
     }
@@ -34,21 +40,21 @@ class VaultP2P {
         this.sharedKey = null;
         this.CHUNK_SIZE = 64 * 1024; // 64KB Chunks für High-Speed LAN
         this.callbacks = {
-            onConnect: () => {},
-            onDisconnect: () => {},
-            onDataProgress: () => {},
-            onFileReceived: () => {},
-            onIncomingInfo: () => {},
-            onPeerCountUpdate: () => {},
-            onError: () => {},
-            onConnectionType: () => {}
+            onConnect: () => { },
+            onDisconnect: () => { },
+            onDataProgress: () => { },
+            onFileReceived: () => { },
+            onIncomingInfo: () => { },
+            onPeerCountUpdate: () => { },
+            onError: () => { },
+            onConnectionType: () => { }
         };
-        
+
         // State
         this.fileChunks = [];
         this.fileInfo = null;
         this.receivedSize = 0;
-        
+
         // Reconnect State
         this.isHost = false;
         this.targetRoomId = null;
@@ -72,18 +78,18 @@ class VaultP2P {
         this.sharedKey = await this.generateKey();
         const keyString = await this.exportKey(this.sharedKey);
         this.startHeartbeat();
-        
+
         return new Promise((resolve, reject) => {
             // Rekursive Funktion für ID-Recovery Strategie
             const initPeer = (idToTry) => {
                 // Versuche bevorzugte ID (für Reload-Resistenz) oder generiere neu
                 const peer = idToTry ? new Peer(idToTry, PEER_CONFIG) : new Peer(PEER_CONFIG);
-                
+
                 peer.on('open', (id) => {
                     this.peer = peer; // Success!
                     this.peer.on('connection', (c) => this.handleConnection(c));
                     this.peers = [{ id: id, device: this.myDeviceType }];
-                    
+
                     // WICHTIG: Wenn Verbindung zum Server abreißt (z.B. Standby), sofort neu verbinden!
                     this.peer.on('disconnected', () => {
                         console.log('HOST: Lost connection to signaling server. Reconnecting...');
@@ -127,15 +133,15 @@ class VaultP2P {
         this.sharedKey = await this.importKey(keyString);
         this.startHeartbeat();
         this.peer = new Peer(PEER_CONFIG);
-        
+
         this.peer.on('open', (id) => {
             console.log(`GUEST: PeerJS connection to signaling server is open. My ID is ${id}.`);
             console.log(`GUEST: Attempting to connect to host: ${roomId}`);
-            
+
             // Start connection strategy (UDP first, then TCP fallback)
             this.connectToHost(roomId);
         });
-        
+
         this.peer.on('error', (err) => {
             console.error('PeerJS Error (Guest):', err);
             this.callbacks.onError(err);
@@ -150,7 +156,7 @@ class VaultP2P {
 
     connectToHost(roomId) {
         console.log(`GUEST: Connecting to ${roomId} (LAN Mode)`);
-        
+
         const options = {
             reliable: true,
             serialization: 'binary' // Zurück zu Binary für maximale Geschwindigkeit im WLAN
@@ -182,7 +188,7 @@ class VaultP2P {
                 this.checkConnectionType(c);
             }, 500); // Kurze Pause für Stabilität
         });
-        
+
         // WICHTIG: Fehler bei der Verbindung abfangen (z.B. Timeout, Firewall)
         c.on('error', (err) => {
             console.error('Connection Error:', err);
@@ -190,17 +196,17 @@ class VaultP2P {
         });
 
         c.on('data', (data) => this.handleData(data, c));
-        
+
         c.on('close', () => {
             this.connections = this.connections.filter(conn => conn !== c);
             this.callbacks.onDisconnect(this.connections.length);
-            
+
             // Peer sauber aus der Liste entfernen
             if (c.peerId) {
                 this.peers = this.peers.filter(p => p.id !== c.peerId);
             }
             if (this.isHost) this.broadcastPeerList();
-            
+
             if (!this.isHost && this.targetRoomId && this.connections.length === 0) {
                 this.reconnect();
             }
@@ -214,7 +220,7 @@ class VaultP2P {
             try {
                 const stats = await c.peerConnection.getStats();
                 let type = 'UNKNOWN';
-                
+
                 stats.forEach(report => {
                     if (report.type === 'candidate-pair' && report.state === 'succeeded') {
                         const remoteId = report.remoteCandidateId;
@@ -270,9 +276,9 @@ class VaultP2P {
             this.peers = this.peers.filter(p => p.id !== c.peerId);
         }
         if (this.isHost) this.broadcastPeerList();
-        
+
         // Schließen erzwingen, falls noch offen
-        try { c.close(); } catch(e) {}
+        try { c.close(); } catch (e) { }
     }
 
     broadcastPeerList() {
@@ -319,7 +325,7 @@ class VaultP2P {
             // Direktes Entschlüsseln der Binärdaten
             const decryptedBuffer = await this.decryptData(data);
             const textDecoder = new TextDecoder();
-            
+
             let isMeta = false;
             if (decryptedBuffer.byteLength < 1000) {
                 try {
@@ -382,7 +388,7 @@ class VaultP2P {
             // Send Metadata
             const meta = JSON.stringify({ fileName: file.name, fileSize: file.size });
             const metaEncrypted = await this.encryptData(new TextEncoder().encode(meta));
-            
+
             this.connections.forEach(c => { if (c.open) c.send(metaEncrypted); });
 
             // Send Chunks
@@ -391,9 +397,9 @@ class VaultP2P {
 
             reader.onload = async (e) => {
                 const chunkEncrypted = await this.encryptData(e.target.result);
-                
+
                 this.connections.forEach(c => { if (c.open) c.send(chunkEncrypted); });
-                
+
                 offset += e.target.result.byteLength;
                 this.callbacks.onDataProgress(offset, file.size);
 
